@@ -1,16 +1,20 @@
-max_comment_line_length = false
-codes = true
-
-exclude_files = {
-  "tests/",
+stds.nvim = {
+  read_globals = { "jit" },
 }
 
-ignore = {
-  "212", -- Unused argument
-  "631", -- Line is too long
-  "122", -- Setting a readonly global
-}
+std = "lua51+nvim"
 
 read_globals = {
   "vim",
+}
+
+globals = {
+  "vim.g",
+  "vim.b",
+  "vim.w",
+  "vim.o",
+  "vim.bo",
+  "vim.wo",
+  "vim.go",
+  "vim.env",
 }

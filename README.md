@@ -1,21 +1,24 @@
 <div align="center">
 
-![Uzuri Logo](assets/logo.svg)
+![Juu Logo](assets/logo.svg)
 
-# Uzuri.nvim
+# Juu.nvim
 
-[![Made with love](assets/badge-made-with-love.svg)](https://github.com/mistweaverco/uzuri.nvim/graphs/contributors)
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/mistweaverco/uzuri.nvim?style=for-the-badge)](https://github.com/mistweaverco/uzuri.nvim/releases/latest)
+[![Made with love](assets/badge-made-with-love.svg)](https://github.com/mistweaverco/juu.nvim/graphs/contributors)
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/mistweaverco/juu.nvim?style=for-the-badge)](https://github.com/mistweaverco/juu.nvim/releases/latest)
 
 [Requirements](#requirements) • [Installation](#installation) • [Configuration](#configuration) • [Highlights](#highlights) • [Advanced configuration](#advanced-configuration) • [Notes for plugin authors](#notes-for-plugin-authors) • [Alternative and related projects](#alternative-and-related-projects)
 
 <p></p>
 
-A minimal input styling plugin for Neovim.
+A minimal input styling plugin for Neovim with notification and
+LSP progress support.
 
-Uzuri is swahili for "beauty" or "beautiful".
+Juu is swahili for "up" or "above".
 
-It styles the input and select windows in Neovim.
+It styles the input and select windows in Neovim,
+provides a configurable `vim.notify()` backend,
+and displays LSP progress notifications.
 
 <p></p>
 
@@ -30,6 +33,10 @@ It styles the input and select windows in Neovim.
 
 Why the fork? We like snacks.nvim 🍿,
 but find it overkill for just styling the inputs.
+
+Additionally, you get notification and LSP progress functionality,
+providing a unified UI experience for inputs,
+selections, notifications, and LSP progress.
 
 - [Requirements](#requirements)
 - [Screenshots](#screenshots)
@@ -46,14 +53,14 @@ but find it overkill for just styling the inputs.
 
 ## Installation
 
-uzuri.nvim supports all the usual plugin managers
+juu.nvim supports all the usual plugin managers
 
 <details>
   <summary>lazy.nvim</summary>
 
 ```lua
 {
-  'mistweaverco/uzuri.nvim',
+  'mistweaverco/juu.nvim',
   opts = {},
 }
 ```
@@ -65,7 +72,7 @@ uzuri.nvim supports all the usual plugin managers
 
 ```lua
 require('packer').startup(function()
-    use {'mistweaverco/uzuri.nvim'}
+    use {'mistweaverco/juu.nvim'}
 end)
 ```
 
@@ -76,7 +83,7 @@ end)
 
 ```lua
 require "paq" {
-    {'mistweaverco/uzuri.nvim'};
+    {'mistweaverco/juu.nvim'};
 }
 ```
 
@@ -86,7 +93,7 @@ require "paq" {
   <summary>vim-plug</summary>
 
 ```vim
-Plug 'mistweaverco/uzuri.nvim'
+Plug 'mistweaverco/juu.nvim'
 ```
 
 </details>
@@ -95,7 +102,7 @@ Plug 'mistweaverco/uzuri.nvim'
   <summary>dein</summary>
 
 ```vim
-call dein#add('mistweaverco/mistweaverco.nvim')
+call dein#add('mistweaverco/juu.nvim')
 ```
 
 </details>
@@ -104,7 +111,7 @@ call dein#add('mistweaverco/mistweaverco.nvim')
   <summary>Pathogen</summary>
 
 ```sh
-git clone --depth=1 https://github.com/mistweaverco/mistweaverco.nvim.git ~/.vim/bundle/
+git clone --depth=1 https://github.com/mistweaverco/juu.nvim.git ~/.vim/bundle/
 ```
 
 </details>
@@ -113,8 +120,8 @@ git clone --depth=1 https://github.com/mistweaverco/mistweaverco.nvim.git ~/.vim
   <summary>Neovim native package</summary>
 
 ```sh
-git clone --depth=1 https://github.com/mistweaverco/uzuri.nvim.git \
-  "${XDG_DATA_HOME:-$HOME/.local/share}"/nvim/site/pack/uzuri.nvim/start/uzuri.nvim
+git clone --depth=1 https://github.com/mistweaverco/juu.nvim.git \
+  "${XDG_DATA_HOME:-$HOME/.local/share}"/nvim/site/pack/juu.nvim/start/juu.nvim
 ```
 
 </details>
@@ -125,7 +132,20 @@ If you're fine with the defaults, you're good to go after installation. If you
 want to tweak, call this function:
 
 ```lua
-require("uzuri").setup({
+require("juu").setup({
+  -- Notification system (enabled by default, set to false to disable)
+  notify = {
+    -- Override vim.notify() by default
+    override_vim_notify = true,
+    -- See below for more notification options
+  },
+
+  -- LSP progress tracking (enabled by default, set to false to disable)
+  progress = {
+    -- See below for more progress options
+  },
+
+  -- Input styling configuration
   input = {
     -- Set to false to disable the vim.ui.input implementation
     enabled = true,
@@ -229,7 +249,7 @@ require("uzuri").setup({
       },
       buf_options = {
         swapfile = false,
-        filetype = "UzuriSelect",
+        filetype = "JuuSelect",
       },
       win_options = {
         winblend = 0,
@@ -291,14 +311,100 @@ require("uzuri").setup({
 })
 ```
 
+### Notification Configuration
+
+Juu.nvim includes a notification system that can replace `vim.notify()`. By default,
+it overrides `vim.notify()` to display notifications in a corner window. You can
+configure it like this:
+
+```lua
+require("juu").setup({
+  notify = {
+    -- Override vim.notify() (default: true)
+    override_vim_notify = true,
+
+    -- Poll rate for updating notifications (Hz)
+    poll_rate = 10,
+
+    -- Minimum notification level to display
+    filter = vim.log.levels.INFO,
+
+    -- Number of removed messages to retain in history
+    history_size = 128,
+
+    -- Window configuration
+    window = {
+      normal_hl = "Comment",      -- Base highlight group
+      winblend = 100,             -- Background opacity
+      border = "none",            -- Border style
+      zindex = 45,                -- Stacking priority
+      max_width = 0,              -- Maximum width (0 = auto)
+      max_height = 0,             -- Maximum height (0 = auto)
+      x_padding = 1,              -- Padding from right edge
+      y_padding = 0,              -- Padding from bottom edge
+      align = "bottom",           -- Window alignment
+      relative = "editor",        -- Position relative to
+      avoid = {},                 -- Filetypes to avoid (e.g., { "NvimTree" })
+    },
+  },
+})
+```
+
+### LSP Progress Configuration
+
+Juu.nvim automatically tracks and displays LSP progress messages. Configure it like this:
+
+```lua
+require("juu").setup({
+  progress = {
+    -- Poll rate: 0 = immediate, >0 = Hz, false = disabled
+    poll_rate = 0,
+
+    -- Suppress new messages while in insert mode
+    suppress_on_insert = false,
+
+    -- Ignore new tasks that are already complete
+    ignore_done_already = false,
+
+    -- Ignore new tasks that don't contain a message
+    ignore_empty_message = false,
+
+    -- How to group progress messages (default: by LSP server name)
+    notification_group = function(msg)
+      return msg.lsp_client.name
+    end,
+
+    -- Clear notification group when LSP server detaches
+    clear_on_detach = function(client_id)
+      local client = vim.lsp.get_client_by_id(client_id)
+      return client and client.name or nil
+    end,
+
+    -- List of LSP servers to ignore
+    ignore = {},
+
+    -- Display options
+    display = {
+      render_limit = 16,          -- How many messages to show at once
+      done_ttl = 3,               -- How long completed messages persist (seconds)
+      done_icon = "✔",            -- Icon for completed tasks
+      progress_icon = { "dots" }, -- Icon for in-progress tasks (animated)
+      progress_ttl = math.huge,   -- How long in-progress messages persist
+      priority = 30,              -- Ordering priority
+      skip_history = true,        -- Omit from history
+    },
+  },
+})
+```
+
 ## Highlights
 
-A common way to adjust the highlighting of just the uzuri windows is by
+A common way to adjust the highlighting of just the juu windows is by
 providing a `winhighlight` option in the config. See `:help winhighlight`
 for more details. Example:
 
 ```lua
-require('uzuri').setup({
+require('juu').setup({
   input = {
     win_options = {
       winhighlight = 'NormalFloat:DiagnosticError'
@@ -318,7 +424,7 @@ module.
 For example, if you want to use a specific configuration for code actions:
 
 ```lua
-require('uzuri').setup({
+require('juu').setup({
   select = {
     get_config = function(opts)
       if opts.kind == 'codeaction' then
@@ -349,7 +455,7 @@ is no longer an option.
 
 My solution to this is extending the `opts` that are passed to `vim.ui.select`.
 You can add a `telescope` field that will be passed directly into the picker,
-allowing you to customize any part of the UI. If a user has both uzuri and
+allowing you to customize any part of the UI. If a user has both juu and
 telescope installed, they will get your custom picker UI. If either of those
 are not true, the selection UI will gracefully degrade to whatever the user has
 configured for `vim.ui.select`.
@@ -363,17 +469,3 @@ vim.ui.select({'apple', 'banana', 'mango'}, {
 }, function(selected) end)
 ```
 
-For now this is available only for the telescope backend, but feel free to request additions.
-
-## Alternative and related projects
-
-- [dressing.nvim](https://github.com/stevarc/dressing.nvim) - the original project
-- [snacks.nvim](https://github.com/folke/snacks.nvim/blob/main/docs/input.md) - has a `vim.ui.input` implementation
-- [mini.nvim](https://github.com/echasnovski/mini.nvim/blob/main/readmes/mini-pick.md) - has a `vim.ui.select` implementation
-- [telescope-ui-select](https://github.com/nvim-telescope/telescope-ui-select.nvim) - provides a `vim.ui.select` implementation for telescope
-- [fzf-lua](https://github.com/ibhagwan/fzf-lua/blob/061a4df40f5238782fdd7b380fe55650fadd9384/README.md?plain=1#L259-L264) - provides a `vim.ui.select` implementation for fzf
-- [nvim-fzy](https://github.com/mfussenegger/nvim-fzy) - fzf alternative that also provides a `vim.ui.select` implementation ([#13](https://github.com/mfussenegger/nvim-fzy/pull/13))
-- [guihua.lua](https://github.com/ray-x/guihua.lua) - multipurpose GUI library that provides `vim.ui.select` and `vim.ui.input` implementations
-- [nvim-notify](https://github.com/rcarriga/nvim-notify) - the original project for `vim.notify`, which is also included in Uzuri.nvim
-- [nui.nvim](https://github.com/MunifTanjim/nui.nvim) - provides common UI
-  components for plugin authors. [The wiki](https://github.com/MunifTanjim/nui.nvim/wiki/vim.ui) has examples of how to build your own `vim.ui` interfaces.
