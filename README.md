@@ -11,11 +11,14 @@
 
 <p></p>
 
-A minimal input styling plugin for Neovim.
+A minimal input styling plugin for Neovim with notification and
+LSP progress support.
 
 Juu is swahili for "up" or "above".
 
-It styles the input and select windows in Neovim.
+It styles the input and select windows in Neovim,
+provides a configurable `vim.notify()` backend,
+and displays LSP progress notifications.
 
 <p></p>
 
@@ -30,6 +33,10 @@ It styles the input and select windows in Neovim.
 
 Why the fork? We like snacks.nvim 🍿,
 but find it overkill for just styling the inputs.
+
+Additionally, you get notification and LSP progress functionality,
+providing a unified UI experience for inputs,
+selections, notifications, and LSP progress.
 
 - [Requirements](#requirements)
 - [Screenshots](#screenshots)
@@ -95,7 +102,7 @@ Plug 'mistweaverco/juu.nvim'
   <summary>dein</summary>
 
 ```vim
-call dein#add('mistweaverco/mistweaverco.nvim')
+call dein#add('mistweaverco/juu.nvim')
 ```
 
 </details>
@@ -104,7 +111,7 @@ call dein#add('mistweaverco/mistweaverco.nvim')
   <summary>Pathogen</summary>
 
 ```sh
-git clone --depth=1 https://github.com/mistweaverco/mistweaverco.nvim.git ~/.vim/bundle/
+git clone --depth=1 https://github.com/mistweaverco/juu.nvim.git ~/.vim/bundle/
 ```
 
 </details>
@@ -126,6 +133,19 @@ want to tweak, call this function:
 
 ```lua
 require("juu").setup({
+  -- Notification system (enabled by default, set to false to disable)
+  notify = {
+    -- Override vim.notify() by default
+    override_vim_notify = true,
+    -- See below for more notification options
+  },
+
+  -- LSP progress tracking (enabled by default, set to false to disable)
+  progress = {
+    -- See below for more progress options
+  },
+
+  -- Input styling configuration
   input = {
     -- Set to false to disable the vim.ui.input implementation
     enabled = true,
@@ -291,6 +311,92 @@ require("juu").setup({
 })
 ```
 
+### Notification Configuration
+
+Juu.nvim includes a notification system that can replace `vim.notify()`. By default,
+it overrides `vim.notify()` to display notifications in a corner window. You can
+configure it like this:
+
+```lua
+require("juu").setup({
+  notify = {
+    -- Override vim.notify() (default: true)
+    override_vim_notify = true,
+
+    -- Poll rate for updating notifications (Hz)
+    poll_rate = 10,
+
+    -- Minimum notification level to display
+    filter = vim.log.levels.INFO,
+
+    -- Number of removed messages to retain in history
+    history_size = 128,
+
+    -- Window configuration
+    window = {
+      normal_hl = "Comment",      -- Base highlight group
+      winblend = 100,             -- Background opacity
+      border = "none",            -- Border style
+      zindex = 45,                -- Stacking priority
+      max_width = 0,              -- Maximum width (0 = auto)
+      max_height = 0,             -- Maximum height (0 = auto)
+      x_padding = 1,              -- Padding from right edge
+      y_padding = 0,              -- Padding from bottom edge
+      align = "bottom",           -- Window alignment
+      relative = "editor",        -- Position relative to
+      avoid = {},                 -- Filetypes to avoid (e.g., { "NvimTree" })
+    },
+  },
+})
+```
+
+### LSP Progress Configuration
+
+Juu.nvim automatically tracks and displays LSP progress messages. Configure it like this:
+
+```lua
+require("juu").setup({
+  progress = {
+    -- Poll rate: 0 = immediate, >0 = Hz, false = disabled
+    poll_rate = 0,
+
+    -- Suppress new messages while in insert mode
+    suppress_on_insert = false,
+
+    -- Ignore new tasks that are already complete
+    ignore_done_already = false,
+
+    -- Ignore new tasks that don't contain a message
+    ignore_empty_message = false,
+
+    -- How to group progress messages (default: by LSP server name)
+    notification_group = function(msg)
+      return msg.lsp_client.name
+    end,
+
+    -- Clear notification group when LSP server detaches
+    clear_on_detach = function(client_id)
+      local client = vim.lsp.get_client_by_id(client_id)
+      return client and client.name or nil
+    end,
+
+    -- List of LSP servers to ignore
+    ignore = {},
+
+    -- Display options
+    display = {
+      render_limit = 16,          -- How many messages to show at once
+      done_ttl = 3,               -- How long completed messages persist (seconds)
+      done_icon = "✔",            -- Icon for completed tasks
+      progress_icon = { "dots" }, -- Icon for in-progress tasks (animated)
+      progress_ttl = math.huge,   -- How long in-progress messages persist
+      priority = 30,              -- Ordering priority
+      skip_history = true,        -- Omit from history
+    },
+  },
+})
+```
+
 ## Highlights
 
 A common way to adjust the highlighting of just the juu windows is by
@@ -363,17 +469,3 @@ vim.ui.select({'apple', 'banana', 'mango'}, {
 }, function(selected) end)
 ```
 
-For now this is available only for the telescope backend, but feel free to request additions.
-
-## Alternative and related projects
-
-- [dressing.nvim](https://github.com/stevarc/dressing.nvim) - the original project
-- [snacks.nvim](https://github.com/folke/snacks.nvim/blob/main/docs/input.md) - has a `vim.ui.input` implementation
-- [mini.nvim](https://github.com/echasnovski/mini.nvim/blob/main/readmes/mini-pick.md) - has a `vim.ui.select` implementation
-- [telescope-ui-select](https://github.com/nvim-telescope/telescope-ui-select.nvim) - provides a `vim.ui.select` implementation for telescope
-- [fzf-lua](https://github.com/ibhagwan/fzf-lua/blob/061a4df40f5238782fdd7b380fe55650fadd9384/README.md?plain=1#L259-L264) - provides a `vim.ui.select` implementation for fzf
-- [nvim-fzy](https://github.com/mfussenegger/nvim-fzy) - fzf alternative that also provides a `vim.ui.select` implementation ([#13](https://github.com/mfussenegger/nvim-fzy/pull/13))
-- [guihua.lua](https://github.com/ray-x/guihua.lua) - multipurpose GUI library that provides `vim.ui.select` and `vim.ui.input` implementations
-- [nvim-notify](https://github.com/rcarriga/nvim-notify) - the original project for `vim.notify`, which is also included in Juu.nvim
-- [nui.nvim](https://github.com/MunifTanjim/nui.nvim) - provides common UI
-  components for plugin authors. [The wiki](https://github.com/MunifTanjim/nui.nvim/wiki/vim.ui) has examples of how to build your own `vim.ui` interfaces.

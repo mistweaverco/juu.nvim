@@ -6,8 +6,19 @@ M.setup = function(opts)
   opts = opts or {}
   require("juu.config").update(opts)
   if opts.notify ~= false then
-    require("juu.notify").setup(opts.notify)
-    vim.notify = require("juu.notify") --luacheck: ignore
+    local notify = require("juu.notify")
+    notify.setup(opts.notify)
+    if notify.options.override_vim_notify then
+      vim.notify = notify.notify --luacheck: ignore
+    end
+    -- Set up commands for notifications
+    require("juu.commands").setup()
+  end
+  -- Set up LSP progress tracking
+  if opts.progress ~= false then
+    local progress = require("juu.progress")
+    -- Call setup to trigger initialization callback (even if opts.progress is nil, use defaults)
+    progress.setup(opts.progress)
   end
   M.patch()
 end
