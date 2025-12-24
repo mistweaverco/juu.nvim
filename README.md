@@ -1,11 +1,11 @@
 <div align="center">
 
-![Uzuri Logo](assets/logo.svg)
+![Juu Logo](assets/logo.svg)
 
-# Uzuri.nvim
+# Juu.nvim
 
-[![Made with love](assets/badge-made-with-love.svg)](https://github.com/mistweaverco/uzuri.nvim/graphs/contributors)
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/mistweaverco/uzuri.nvim?style=for-the-badge)](https://github.com/mistweaverco/uzuri.nvim/releases/latest)
+[![Made with love](assets/badge-made-with-love.svg)](https://github.com/mistweaverco/juu.nvim/graphs/contributors)
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/mistweaverco/juu.nvim?style=for-the-badge)](https://github.com/mistweaverco/juu.nvim/releases/latest)
 
 [Requirements](#requirements) • [Installation](#installation) • [Configuration](#configuration) • [Highlights](#highlights) • [Advanced configuration](#advanced-configuration) • [Notes for plugin authors](#notes-for-plugin-authors) • [Alternative and related projects](#alternative-and-related-projects)
 
@@ -13,7 +13,7 @@
 
 A minimal input styling plugin for Neovim.
 
-Uzuri is swahili for "beauty" or "beautiful".
+Juu is swahili for "up" or "above".
 
 It styles the input and select windows in Neovim.
 
@@ -46,14 +46,14 @@ but find it overkill for just styling the inputs.
 
 ## Installation
 
-uzuri.nvim supports all the usual plugin managers
+juu.nvim supports all the usual plugin managers
 
 <details>
   <summary>lazy.nvim</summary>
 
 ```lua
 {
-  'mistweaverco/uzuri.nvim',
+  'mistweaverco/juu.nvim',
   opts = {},
 }
 ```
@@ -65,7 +65,7 @@ uzuri.nvim supports all the usual plugin managers
 
 ```lua
 require('packer').startup(function()
-    use {'mistweaverco/uzuri.nvim'}
+    use {'mistweaverco/juu.nvim'}
 end)
 ```
 
@@ -76,7 +76,7 @@ end)
 
 ```lua
 require "paq" {
-    {'mistweaverco/uzuri.nvim'};
+    {'mistweaverco/juu.nvim'};
 }
 ```
 
@@ -86,7 +86,7 @@ require "paq" {
   <summary>vim-plug</summary>
 
 ```vim
-Plug 'mistweaverco/uzuri.nvim'
+Plug 'mistweaverco/juu.nvim'
 ```
 
 </details>
@@ -113,8 +113,8 @@ git clone --depth=1 https://github.com/mistweaverco/mistweaverco.nvim.git ~/.vim
   <summary>Neovim native package</summary>
 
 ```sh
-git clone --depth=1 https://github.com/mistweaverco/uzuri.nvim.git \
-  "${XDG_DATA_HOME:-$HOME/.local/share}"/nvim/site/pack/uzuri.nvim/start/uzuri.nvim
+git clone --depth=1 https://github.com/mistweaverco/juu.nvim.git \
+  "${XDG_DATA_HOME:-$HOME/.local/share}"/nvim/site/pack/juu.nvim/start/juu.nvim
 ```
 
 </details>
@@ -125,7 +125,7 @@ If you're fine with the defaults, you're good to go after installation. If you
 want to tweak, call this function:
 
 ```lua
-require("uzuri").setup({
+require("juu").setup({
   input = {
     -- Set to false to disable the vim.ui.input implementation
     enabled = true,
@@ -229,7 +229,7 @@ require("uzuri").setup({
       },
       buf_options = {
         swapfile = false,
-        filetype = "UzuriSelect",
+        filetype = "JuuSelect",
       },
       win_options = {
         winblend = 0,
@@ -293,12 +293,12 @@ require("uzuri").setup({
 
 ## Highlights
 
-A common way to adjust the highlighting of just the uzuri windows is by
+A common way to adjust the highlighting of just the juu windows is by
 providing a `winhighlight` option in the config. See `:help winhighlight`
 for more details. Example:
 
 ```lua
-require('uzuri').setup({
+require('juu').setup({
   input = {
     win_options = {
       winhighlight = 'NormalFloat:DiagnosticError'
@@ -318,7 +318,7 @@ module.
 For example, if you want to use a specific configuration for code actions:
 
 ```lua
-require('uzuri').setup({
+require('juu').setup({
   select = {
     get_config = function(opts)
       if opts.kind == 'codeaction' then
@@ -349,7 +349,7 @@ is no longer an option.
 
 My solution to this is extending the `opts` that are passed to `vim.ui.select`.
 You can add a `telescope` field that will be passed directly into the picker,
-allowing you to customize any part of the UI. If a user has both uzuri and
+allowing you to customize any part of the UI. If a user has both juu and
 telescope installed, they will get your custom picker UI. If either of those
 are not true, the selection UI will gracefully degrade to whatever the user has
 configured for `vim.ui.select`.
@@ -374,6 +374,6 @@ For now this is available only for the telescope backend, but feel free to reque
 - [fzf-lua](https://github.com/ibhagwan/fzf-lua/blob/061a4df40f5238782fdd7b380fe55650fadd9384/README.md?plain=1#L259-L264) - provides a `vim.ui.select` implementation for fzf
 - [nvim-fzy](https://github.com/mfussenegger/nvim-fzy) - fzf alternative that also provides a `vim.ui.select` implementation ([#13](https://github.com/mfussenegger/nvim-fzy/pull/13))
 - [guihua.lua](https://github.com/ray-x/guihua.lua) - multipurpose GUI library that provides `vim.ui.select` and `vim.ui.input` implementations
-- [nvim-notify](https://github.com/rcarriga/nvim-notify) - the original project for `vim.notify`, which is also included in Uzuri.nvim
+- [nvim-notify](https://github.com/rcarriga/nvim-notify) - the original project for `vim.notify`, which is also included in Juu.nvim
 - [nui.nvim](https://github.com/MunifTanjim/nui.nvim) - provides common UI
   components for plugin authors. [The wiki](https://github.com/MunifTanjim/nui.nvim/wiki/vim.ui) has examples of how to build your own `vim.ui` interfaces.
