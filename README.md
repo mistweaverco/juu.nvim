@@ -21,7 +21,8 @@ notification, input and (LSP) progress.
 Juu is swahili for "up" or "above."
 
 It styles the input and select windows in Neovim,
-provides a configurable `vim.notify()` backend,
+provides a configurable `vim.notify()` and
+[`juu.progress`](./lua/juu/demos/progress/loading.lua) backend,
 and displays (LSP) progress notifications.
 
 <p></p>
