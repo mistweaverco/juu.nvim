@@ -21,6 +21,7 @@ local poll = require("juu.poll")
 ---@field key           Key|nil       Replace existing notification item of the same key
 ---@field group         Key|nil       Group that this notification item belongs to
 ---@field annote        string|nil    Optional single-line title that accompanies the message
+---@field title         string|nil    Optional title (alias for annote, for vim.notify compatibility)
 ---@field hidden        boolean|nil   Whether this item should be shown
 ---@field ttl           number|nil    How long after a notification item should exist; pass 0 to use default value
 ---@field update_only   boolean|nil   If true, don't create new notification items
@@ -68,6 +69,7 @@ local poll = require("juu.poll")
 ---@field priority          number|nil    Order in which group should be displayed; defaults to `50`
 ---@field skip_history      boolean|nil   Whether messages should be preserved in history
 ---@field update_hook       fun(item: Item)|false|nil   Called when an item is updated; defaults to `false`
+---@field color_messages    boolean|nil   Whether to apply log level colors to message text (defaults to `true`)
 
 --- Notification element containing a message and optional annotation.
 ---
@@ -76,7 +78,8 @@ local poll = require("juu.poll")
 ---@field content_key   Key         What to deduplicate items by (do not deduplicate if `nil`)
 ---@field message       string      Displayed message for the item
 ---@field annote        string|nil  Optional title that accompanies the message
----@field style         string      Style used to render the annote/title, if any
+---@field style         string      Style used to render the message text, if any
+---@field annote_style  string|nil  Style used to render the annote/title (with inverted colors), if any
 ---@field hidden        boolean     Whether this item should be shown
 ---@field expires_at    number      What time this item should be removed; math.huge means never
 ---@field last_updated  number      What time this item was last updated
@@ -98,6 +101,7 @@ local poll = require("juu.poll")
 ---
 ---@class HistoryFilter
 ---@field group_key       Key|nil     Items from this group
+---@field level           number|string|nil  Filter by log level (number like vim.log.levels.INFO, or string like "info", "error", etc.)
 ---@field before          number|nil  Only items last updated at least this long ago
 ---@field since           number|nil  Only items last updated at most this long ago
 ---@field include_removed boolean|nil Include items that have been removed (default: true)
@@ -148,10 +152,89 @@ notification.default_config = {
   info_annote = "INFO",
   warn_annote = "WARN",
   error_annote = "ERROR",
+  color_messages = true,
   update_hook = function(item)
     notification.set_content_key(item)
   end,
 }
+
+--- Create inverted highlight groups for annotes (bg becomes fg, fg becomes bg)
+---@param base_style string The base highlight group name
+---@return string|nil inverted_style_name The name of the inverted highlight group, or nil if base doesn't exist
+local function create_inverted_annote_style(base_style)
+  if not base_style then
+    return nil
+  end
+
+  local inverted_name = "JuuNotifyAnnote" .. base_style
+  local ok, base_hl = pcall(vim.api.nvim_get_hl, 0, { name = base_style })
+
+  if not ok or not base_hl then
+    -- If base highlight doesn't exist, try to link to a default inverted style
+    return nil
+  end
+
+  -- Get foreground and background colors
+  -- nvim_get_hl returns fg/bg as numbers, we need to convert them
+  local fg = base_hl.fg
+  local bg = base_hl.bg
+
+  -- If both fg and bg are nil, try to get them from the linked highlight
+  if not fg and not bg and base_hl.link then
+    local linked_ok, linked_hl = pcall(vim.api.nvim_get_hl, 0, { name = base_hl.link })
+    if linked_ok and linked_hl then
+      fg = linked_hl.fg
+      bg = linked_hl.bg
+    end
+  end
+
+  -- Create inverted highlight: swap fg and bg
+  -- If we don't have colors, use reverse attribute
+  local hl_opts = {
+    bold = base_hl.bold,
+    italic = base_hl.italic,
+    underline = base_hl.underline,
+    undercurl = base_hl.undercurl,
+    strikethrough = base_hl.strikethrough,
+  }
+
+  if fg or bg then
+    hl_opts.fg = bg
+    hl_opts.bg = fg
+  else
+    -- Fallback: use reverse attribute
+    hl_opts.reverse = true
+  end
+
+  vim.api.nvim_set_hl(0, inverted_name, hl_opts)
+
+  return inverted_name
+end
+
+--- Initialize inverted highlight groups for annotes
+---@param config Config
+function notification._init_annote_styles(config)
+  if not config then
+    return
+  end
+
+  -- Create inverted styles for each log level
+  if config.debug_style then
+    create_inverted_annote_style(config.debug_style)
+  end
+  if config.info_style then
+    create_inverted_annote_style(config.info_style)
+  end
+  if config.warn_style then
+    create_inverted_annote_style(config.warn_style)
+  end
+  if config.error_style then
+    create_inverted_annote_style(config.error_style)
+  end
+  if config.annote_style then
+    create_inverted_annote_style(config.annote_style)
+  end
+end
 
 --- Sets a |juu.notify.Item|'s `content_key`, for deduplication.
 ---
@@ -261,6 +344,10 @@ require("juu.options").declare(notification, "notification", notification.option
   if not notification.options.configs.default then
     logger.warn("no default notification config specified; using default")
     notification.options.configs.default = notification.default_config
+  end
+  -- Initialize inverted highlight groups for annotes
+  for _, config in pairs(notification.options.configs) do
+    notification._init_annote_styles(config)
   end
   state.removed_cap = notification.options.history_size
   notification.reset()

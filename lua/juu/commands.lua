@@ -592,6 +592,26 @@ function SC.setup()
     complete = SC.handle_complete(SC.subcommands),
     force = true,
   })
+
+  -- Add :Notifications command
+  vim.api.nvim_create_user_command("Notifications", function(opts)
+    local level_filter = nil
+    if opts.args and opts.args ~= "" then
+      level_filter = opts.args
+    end
+    local filter = {}
+    if level_filter then
+      filter.level = level_filter
+    end
+    require("juu.notify").show_history(filter)
+  end, {
+    desc = "Show notifications history (like :messages). Optional argument: filter by level (info, error, warn, debug)",
+    nargs = "?",
+    complete = function(_, _, _)
+      return { "info", "error", "warn", "debug" }
+    end,
+    force = true,
+  })
 end
 
 --- Reflect on subcommands specification to generate README documentation.

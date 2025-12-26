@@ -107,7 +107,7 @@ end
 --- local handle = progress.handle.create({
 ---   title = "My Task",
 ---   message = "Doing something...",
----   lsp_client = { name = "my_fake_lsp" },
+---   client = { name = "my_client" },
 ---   percentage = 0,
 --- })
 ---
@@ -140,7 +140,7 @@ function handle.create(message)
   message.token = next_token()
 
   -- Set required fields
-  message.lsp_client = message.lsp_client or {
+  message.client = message.client or {
     name = "juu",
   }
   if message.done == nil then

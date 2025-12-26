@@ -1,6 +1,7 @@
 ---@mod juu.progress.lsp Neovim LSP shim layer
 local M = {}
 local logger = require("juu.logger")
+local notification = require("juu.notify")
 
 ---@class ProgressMessage
 ---@field token       Key         Unique identifier used to accumulate updates
@@ -9,11 +10,19 @@ local logger = require("juu.logger")
 ---@field percentage  number|nil  How much of the progress is complete (out of 100)
 ---@field done        boolean     Whether this progress completed; ignore `percentage` if `done` is `true`
 ---@field cancellable boolean     Whether this task can be canceled (though doing so is unsupported with Juu)
----@field lsp_client  table       LSP client table this message came from
+---@field client      table       Client table this message came from (e.g., LSP client)
 
 --- Autocmd ID for the LSPAttach event.
 ---@type number?
 M.lsp_attach_autocmd = nil
+
+--- Autocmd ID for the LspDetach event.
+---@type number?
+M.lsp_detach_autocmd = nil
+
+--- Autocmd ID for the LspProgress event.
+---@type number?
+M.lsp_progress_autocmd = nil
 
 --- Built-in `$/progress` handler.
 ---@type function
@@ -55,11 +64,32 @@ M.options = {
 ---@options ]]
 
 require("juu.options").declare(M, "progress.lsp", M.options, function()
+  local progress = require("juu.progress")
+
+  -- Check if LSP module is enabled (not nil in progress.options.modules.lsp)
+  local is_enabled = progress.options.modules.lsp ~= nil
+
+  -- Clean up everything first (reentrancy)
   if M.lsp_attach_autocmd ~= nil then
     vim.api.nvim_del_autocmd(M.lsp_attach_autocmd)
     M.lsp_attach_autocmd = nil
   end
+  if M.lsp_detach_autocmd ~= nil then
+    vim.api.nvim_del_autocmd(M.lsp_detach_autocmd)
+    M.lsp_detach_autocmd = nil
+  end
+  if M.lsp_progress_autocmd ~= nil then
+    vim.api.nvim_del_autocmd(M.lsp_progress_autocmd)
+    M.lsp_progress_autocmd = nil
+  end
+  progress.unregister_detach_handler("lsp")
 
+  -- Only set up if enabled
+  if not is_enabled then
+    return
+  end
+
+  -- Set up LSP attach handler for ring buffer
   if vim.ringbuf and M.options.progress_ringbuf_size > 0 then
     logger.info("Setting LSP progress ringbuf size to", M.options.progress_ringbuf_size)
     M.lsp_attach_autocmd = vim.api.nvim_create_autocmd("LspAttach", {
@@ -71,6 +101,7 @@ require("juu.options").declare(M, "progress.lsp", M.options, function()
     })
   end
 
+  -- Set up log handler if enabled
   if M.options.log_handler then
     vim.lsp.handlers["$/progress"] = function(x, msg, ctx)
       local client = vim.lsp.get_client_by_id(ctx.client_id)
@@ -84,7 +115,48 @@ require("juu.options").declare(M, "progress.lsp", M.options, function()
       end
     end
   end
+
+  -- Register LSP detach handler
+  -- This handler clears notifications when an LSP client detaches
+  progress.register_detach_handler("lsp", function(client_id)
+    local client = vim.lsp.get_client_by_id(client_id)
+    if client and client.name then
+      notification.clear(client.name)
+    end
+  end)
+
+  -- Set up LspDetach autocmd to call the progress module's on_detach
+  M.lsp_detach_autocmd = M.on_detach(function(client_id)
+    progress.on_detach(client_id)
+  end)
 end)
+
+--- Set up LSP progress tracking with polling.
+---
+--- This function sets up the LspProgress autocmd to trigger polling when progress
+--- messages are received. The poller will be started or triggered based on the
+--- poll_rate setting.
+---
+---@param poll_rate number|false Poll rate in Hz (0 = immediate, >0 = frequency, false = disabled)
+---@param poller table Poller object with `start_polling` and `poll_once` methods
+function M.setup_progress_tracking(poll_rate, poller)
+  -- Clean up previous autocmd if it exists
+  if M.lsp_progress_autocmd ~= nil then
+    vim.api.nvim_del_autocmd(M.lsp_progress_autocmd)
+    M.lsp_progress_autocmd = nil
+  end
+
+  -- Only set up if poll_rate is not disabled
+  if poll_rate ~= false then
+    M.lsp_progress_autocmd = M.on_progress_message(function()
+      if poll_rate > 0 then
+        poller:start_polling(poll_rate)
+      else
+        poller:poll_once()
+      end
+    end)
+  end
+end
 
 --- Consumes LSP progress messages from each client.progress ring buffer.
 ---
@@ -120,7 +192,7 @@ function M.poll_for_messages()
           percentage = value.done and nil or value.percentage,
           done = value.kind == "end",
           cancellable = value.cancellable or false,
-          lsp_client = client,
+          client = client,
         }
         logger.info("Got message from", client_name, ":", value)
         table.insert(messages, message)
@@ -243,7 +315,7 @@ if not vim.lsp.status then
             percentage = value.done and nil or value.percentage,
             done = value.done or false,
             cancellable = value.cancellable or false,
-            lsp_client = client,
+            client = client,
           }
           logger.info("Got message from", client_name, ":", value)
           table.insert(messages, message)

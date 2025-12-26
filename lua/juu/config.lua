@@ -1,3 +1,11 @@
+---@class JuuDefaultConfig
+---@field input table Configuration for vim.ui.input
+---@field select table Configuration for vim.ui.select
+
+---@class JuuUserConfig
+---@field input table|nil Configuration for vim.ui.input
+---@field select table|nil Configuration for vim.ui.select
+
 local default_config = {
   input = {
     -- Set to false to disable the vim.ui.input implementation
