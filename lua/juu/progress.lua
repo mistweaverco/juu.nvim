@@ -1,14 +1,41 @@
 ---@mod juu.progress LSP progress subsystem
 local progress = {}
 progress.display = require("juu.progress.display")
-progress.lsp = require("juu.progress.lsp")
 progress.handle = require("juu.progress.handle")
 local logger = require("juu.logger")
 local notification = require("juu.notify")
 local poll = require("juu.poll")
 
+--- Default modules that are enabled by default if not explicitly disabled.
+--- Add module names here to enable them automatically.
+---@type string[]
+local default_modules = { "lsp" }
+
+--- Lazy loader for progress modules (only loaded when enabled)
+---@param module_name string Name of the module (e.g., "lsp")
+---@return table|nil
+local function get_module(module_name)
+  local module_key = module_name
+  if progress[module_key] == nil then
+    local ok, module = pcall(require, "juu.progress." .. module_name)
+    if ok then
+      progress[module_key] = module
+    else
+      logger.error("Failed to load progress module:", module_name)
+      return nil
+    end
+  end
+  return progress[module_key]
+end
+
 --- Table of progress-related autocmds, used to ensure setup() re-entrancy.
 local autocmds = {}
+
+--- Registry of detach handlers.
+--- Each handler is called when a client/module detaches.
+---
+---@type table<string, fun(identifier: any): any>
+local detach_handlers = {}
 
 ---@options progress [[
 ---@protected
@@ -16,17 +43,17 @@ local autocmds = {}
 progress.options = {
   --- How and when to poll for progress messages
   ---
-  --- Set to `0` to immediately poll on each |LspProgress| event.
+  --- Set to `0` to immediately poll on each progress event (e.g., |LspProgress|).
   ---
   --- Set to a positive number to poll for progress messages at the specified
   --- frequency (Hz, i.e., polls per second). Combining a slow `poll_rate`
   --- (e.g., `0.5`) with the `ignore_done_already` setting can be used to filter
   --- out short-lived progress tasks, de-cluttering notifications.
   ---
-  --- Note that if too many LSP progress messages are sent between polls,
+  --- Note that if too many progress messages are sent between polls,
   --- Neovim's progress ring buffer will overflow and messages will be
   --- overwritten (dropped), possibly causing stale progress notifications.
-  --- Workarounds include using the |juu.option.progress.lsp.progress_ringbuf_size|
+  --- Workarounds include using the |juu.option.progress.modules.lsp.progress_ringbuf_size|
   --- option, or manually calling |juu.notify.reset| (see #167).
   ---
   --- Set to `false` to disable polling altogether; you can still manually poll
@@ -67,45 +94,27 @@ progress.options = {
 
   --- How to get a progress message's notification group key
   ---
-  --- Set this to return a constant to group all LSP progress messages together,
+  --- Set this to return a constant to group all progress messages together,
   --- e.g.,
   --->lua
   ---     notification_group = function(msg)
-  ---       -- N.B. you may also want to configure this group key ("lsp_progress")
+  ---       -- N.B. you may also want to configure this group key ("progress")
   ---       -- using progress.display.overrides or notification.configs
-  ---       return "lsp_progress"
+  ---       return "progress"
   ---     end
   ---<
   ---
   ---@type fun(msg: ProgressMessage): Key
   notification_group = function(msg)
-    return msg.lsp_client.name
+    return msg.client.name
   end,
 
-  --- Clear notification group when LSP server detaches
-  ---
-  --- This option should be set to a function that, given a client ID number,
-  --- returns the notification group to clear. No group will be cleared if
-  --- the function returns `nil`.
-  ---
-  --- The default setting looks up and returns the LSP client name, which is
-  --- also used by |juu.option.progress.notification_group|.
-  ---
-  --- Set this option to `false` to disable this feature entirely
-  --- (no |LspDetach| callback will be installed).
-  ---
-  ---@type false|fun(client_id: number): Key
-  clear_on_detach = function(client_id)
-    local client = vim.lsp.get_client_by_id(client_id)
-    return client and client.name or nil
-  end,
-
-  --- List of filters to ignore LSP progress messages
+  --- List of filters to ignore progress messages
   ---
   --- Each filter is either a string or a function.
   ---
-  --- If it is a string, then it is treated as the name of a LSP server;
-  --- messages from that server are ignored.
+  --- If it is a string, then it is treated as the name of a client;
+  --- messages from that client are ignored.
   ---
   --- If it is a function, then the progress message object is passed to the
   --- function. If the function returns a truthy value, then that message is
@@ -114,7 +123,7 @@ progress.options = {
   --- Example:
   --->lua
   ---     ignore = {
-  ---       "rust_analyzer",  -- Ignore all messages from rust-analyzer
+  ---       "rust_analyzer",  -- Ignore all messages from rust-analyzer client
   ---       function(msg)     -- Ignore messages containing "ing"
   ---         return string.find(msg.title, "ing") ~= nil
   ---       end,
@@ -124,8 +133,16 @@ progress.options = {
   ---@type (string|fun(msg: ProgressMessage): any)[]
   ignore = {},
 
+  --- Configuration for progress modules (e.g., LSP integration)
+  ---
+  --- Set `modules.lsp = nil` to disable LSP progress tracking.
+  ---
+  ---@type { lsp?: table|nil }
+  modules = {
+    lsp = nil, -- Lazy-loaded when enabled
+  },
+
   display = progress.display,
-  lsp = progress.lsp,
 }
 ---@options ]]
 
@@ -138,18 +155,64 @@ require("juu.options").declare(progress, "progress", progress.options, function(
   end
   autocmds = {}
 
-  if progress.options.poll_rate ~= false then
-    autocmds["LspProgress"] = progress.lsp.on_progress_message(function()
-      if progress.options.poll_rate > 0 then
-        progress.poller:start_polling(progress.options.poll_rate)
-      else
-        progress.poller:poll_once()
+  -- Set up modules if enabled
+  -- Process default modules (enable by default if not explicitly set)
+  for _, module_name in ipairs(default_modules) do
+    local module_opts = progress.options.modules[module_name]
+    if module_opts == nil then
+      -- Not explicitly set, enable by default
+      module_opts = {}
+      progress.options.modules[module_name] = module_opts
+    end
+
+    if module_opts ~= false then
+      -- Module is enabled
+      local module = get_module(module_name)
+      if module then
+        if module_opts == module then
+          -- It's the module itself, use its current options
+          module.setup(module.options)
+        elseif type(module_opts) == "table" and next(module_opts) == nil then
+          -- Empty table means use default options
+          module.setup(module.options)
+        else
+          -- It's a table of options
+          module.setup(module_opts)
+        end
+        -- Set up module-specific progress tracking if the method exists
+        if module.setup_progress_tracking then
+          module.setup_progress_tracking(progress.options.poll_rate, progress.poller)
+        end
       end
-    end)
+    elseif progress[module_name] ~= nil then
+      -- Module was explicitly disabled, clean it up
+      progress[module_name].setup(nil)
+    end
   end
 
-  if progress.options.clear_on_detach then
-    autocmds["LspDetach"] = progress.lsp.on_detach(progress.on_detach)
+  -- Also handle any other modules that might be configured
+  for module_name, module_opts in pairs(progress.options.modules) do
+    -- Skip if we already processed it above
+    local is_default = false
+    for _, default_name in ipairs(default_modules) do
+      if module_name == default_name then
+        is_default = true
+        break
+      end
+    end
+    if not is_default and module_opts ~= nil and module_opts ~= false then
+      local module = get_module(module_name)
+      if module then
+        if module_opts == module then
+          module.setup(module.options)
+        else
+          module.setup(module_opts)
+        end
+        if module.setup_progress_tracking then
+          module.setup_progress_tracking(progress.options.poll_rate, progress.poller)
+        end
+      end
+    end
   end
 end)
 
@@ -218,9 +281,27 @@ progress.poller = poll.Poller({
       return false
     end
 
-    local messages = progress.lsp.poll_for_messages()
+    -- Poll all enabled modules for messages
+    local all_messages = {}
+    for module_name, module_opts in pairs(progress.options.modules) do
+      if module_opts ~= nil and module_opts ~= false then
+        local module = get_module(module_name)
+        if module and module.poll_for_messages then
+          local messages = module.poll_for_messages()
+          for _, msg in ipairs(messages) do
+            table.insert(all_messages, msg)
+          end
+        end
+      end
+    end
+
+    if #all_messages == 0 then
+      return false
+    end
+
+    local messages = all_messages
     if #messages == 0 then
-      logger.info("No LSP messages (that can be displayed)")
+      logger.info("No progress messages (that can be displayed)")
       return false
     end
 
@@ -229,15 +310,15 @@ progress.poller = poll.Poller({
       local ignore = false
       for _, filter in ipairs(progress.options.ignore) do
         if type(filter) == "string" then
-          if msg.lsp_client.name == filter then
+          if msg.client.name == filter then
             ignore = true
-            logger.info("Ignoring LSP progress message by name from", filter, ":", msg)
+            logger.info("Ignoring progress message by name from", filter, ":", msg)
             break
           end
         elseif type(filter) == "function" then
           if filter(msg) then
             ignore = true
-            logger.info("Filtering out LSP progress message", ":", msg)
+            logger.info("Filtering out progress message", ":", msg)
             break
           end
         else
@@ -245,7 +326,7 @@ progress.poller = poll.Poller({
         end
       end
       if not ignore then
-        logger.info("Notifying LSP progress message from", msg.lsp_client.name, ":", msg.title, " | ", msg.message)
+        logger.info("Notifying progress message from", msg.client.name, ":", msg.title, " | ", msg.message)
         progress.load_config(msg)
         notification.notify(progress.format_progress(msg))
       end
@@ -275,18 +356,37 @@ function progress.suppress(suppress)
   end
 end
 
---- Called upon `LspDetach` event.
+--- Register a detach handler for a module.
 ---
---- Clears notification group given by `options.clear_on_detach`.
+--- When a client/module detaches, all registered handlers will be called with
+--- the identifier provided to `on_detach`.
 ---
----@protected
----@param client_id number
-function progress.on_detach(client_id)
-  local group_key = progress.options.clear_on_detach(client_id)
-  if group_key == nil then
-    return
+---@param name string Unique name for this handler (e.g., "lsp")
+---@param handler fun(identifier: any): any Function to call when a client detaches
+function progress.register_detach_handler(name, handler)
+  detach_handlers[name] = handler
+end
+
+--- Unregister a detach handler.
+---
+---@param name string Name of the handler to remove
+function progress.unregister_detach_handler(name)
+  detach_handlers[name] = nil
+end
+
+--- Called when a client/module detaches.
+---
+--- This function calls all registered detach handlers with the provided identifier.
+--- Modules should register their handlers using `register_detach_handler`.
+---
+---@param identifier any Identifier for the detaching client/module (e.g., client_id, client_name, etc.)
+function progress.on_detach(identifier)
+  for name, handler in pairs(detach_handlers) do
+    local ok, err = pcall(handler, identifier)
+    if not ok then
+      logger.error("Error in detach handler '", name, "':", err)
+    end
   end
-  notification.clear(group_key)
 end
 
 return progress

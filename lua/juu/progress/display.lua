@@ -21,12 +21,12 @@ end
 ---@protected
 --- Progress display options
 M.options = {
-  --- How many LSP messages to show at once
+  --- How many progress messages to show at once
   ---
   --- If `false`, no limit.
   ---
-  --- This is used to configure each LSP notification group, so by default,
-  --- this is a per-server limit.
+  --- This is used to configure each progress notification group, so by default,
+  --- this is a per-client limit.
   ---
   ---@type number|false
   render_limit = 16,
@@ -41,7 +41,7 @@ M.options = {
   ---@type number
   done_ttl = 3,
 
-  --- Icon shown when all LSP progress tasks are complete
+  --- Icon shown when all progress tasks are complete
   ---
   --- When a string literal is given (e.g., `"✔"`), it is used as a static icon;
   --- when a table (e.g., `{"dots"}` or `{ pattern = "clock", period = 2 }`) is
@@ -54,7 +54,7 @@ M.options = {
   ---@type string|Manga|Anime
   done_icon = "✔",
 
-  --- Highlight group for completed LSP tasks
+  --- Highlight group for completed progress tasks
   ---
   ---@type string
   done_style = "Constant",
@@ -69,7 +69,7 @@ M.options = {
   ---@type number
   progress_ttl = math.huge,
 
-  --- Icon shown when LSP progress tasks are in progress
+  --- Icon shown when progress tasks are in progress
   ---
   --- When a string literal is given (e.g., `"✔"`), it is used as a static icon;
   --- when a table (e.g., `{"dots"}` or `{ pattern = "clock", period = 2 }`) is
@@ -80,12 +80,12 @@ M.options = {
   ---@type string|Manga|Anime
   progress_icon = { "dots" },
 
-  --- Highlight group for in-progress LSP tasks
+  --- Highlight group for in-progress tasks
   ---
   ---@type string
   progress_style = "WarningMsg",
 
-  --- Highlight group for group name (LSP server name)
+  --- Highlight group for group name (client name)
   ---
   ---@type string
   group_style = "Title",
@@ -95,7 +95,7 @@ M.options = {
   ---@type string
   icon_style = "Question",
 
-  --- Ordering priority for LSP notification group
+  --- Ordering priority for progress notification group
   ---
   ---@type number|false
   priority = 30,

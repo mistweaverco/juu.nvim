@@ -286,7 +286,22 @@ function M.render_item(item, config, count)
 
   local lines, item_width = {}, 0
 
-  local ann_tok = item.annote and Token(item.annote, item.style)
+  -- Use annote_style if available (inverted colors), otherwise fall back to style
+  -- If annote_style is nil, try to create it lazily (e.g., if it wasn't created in fast event context)
+  local annote_hl = item.annote_style
+  if not annote_hl and item.style then
+    -- Lazy creation of inverted style (renderer is not in fast event context)
+    local model = require("juu.notify.notification.model")
+    if model and model.annote_style_from_base then
+      annote_hl = model.annote_style_from_base(item.style) or item.style
+      -- Cache it for next time
+      item.annote_style = annote_hl
+    else
+      annote_hl = item.style
+    end
+  end
+  annote_hl = annote_hl or item.style
+  local ann_tok = item.annote and Token(item.annote, annote_hl)
   local sep_tok = Token(config.annote_separator or " ")
 
   -- How much space is available to message lines
@@ -318,6 +333,9 @@ function M.render_item(item, config, count)
     end
   end
 
+  -- Determine message style: use item.style if color_messages is enabled, otherwise nil (default)
+  local msg_style = (config.color_messages and item.style) or nil
+
   local function insert(line)
     if ann_tok then
       -- Need to emite annote token in this line
@@ -342,11 +360,11 @@ function M.render_item(item, config, count)
     if msg_width >= lwidth then
       -- The entire line fits into the available space; insert it as is.
       -- Note that we do not trim it either.
-      insert(Token(whole_line))
+      insert(Token(whole_line, msg_style))
     elseif not M.options.reflow then
       -- If the message is wider than available space but we are explicitly
       -- asked not to reflow, then just truncate it.
-      insert(Token(vim.fn.strcharpart(whole_line, 0, msg_width, true)))
+      insert(Token(vim.fn.strcharpart(whole_line, 0, msg_width, true), msg_style))
     else
       local split_begin, postsplit = 0, nil
       whole_line = vim.fn.trim(whole_line)
@@ -386,7 +404,7 @@ function M.render_item(item, config, count)
         else
           postsplit = nil
         end
-        insert(Token(line))
+        insert(Token(line, msg_style))
         split_begin = split_begin + split_len
         lwidth = lwidth - split_len
       end
@@ -494,7 +512,9 @@ function M.echo_history(items)
     table.insert(chunks, { " | ", "Comment" })
 
     if item.annote and #item.annote > 0 then
-      table.insert(chunks, { item.annote, item.style })
+      -- Use annote_style if available (inverted colors), otherwise fall back to style
+      local annote_hl = item.annote_style or item.style or "Comment"
+      table.insert(chunks, { item.annote, annote_hl })
     end
 
     if is_multiline_msg then
@@ -503,7 +523,8 @@ function M.echo_history(items)
       table.insert(chunks, { " ", "MsgArea" })
     end
 
-    table.insert(chunks, { item.message, "MsgArea" })
+    -- Use item.style for message if available, otherwise use MsgArea
+    table.insert(chunks, { item.message, item.style or "MsgArea" })
 
     if is_multiline_msg then
       table.insert(chunks, { "\n", "MsgArea" })

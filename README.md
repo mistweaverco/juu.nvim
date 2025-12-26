@@ -7,36 +7,36 @@
 [![Made with love](assets/badge-made-with-love.svg)](https://github.com/mistweaverco/juu.nvim/graphs/contributors)
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/mistweaverco/juu.nvim?style=for-the-badge)](https://github.com/mistweaverco/juu.nvim/releases/latest)
 
-[Requirements](#requirements) • [Installation](#installation) • [Configuration](#configuration) • [Highlights](#highlights) • [Advanced configuration](#advanced-configuration) • [Notes for plugin authors](#notes-for-plugin-authors) • [Alternative and related projects](#alternative-and-related-projects)
+[Requirements](#requirements) •
+[Installation](#installation) •
+[Configuration](#configuration) •
+[Highlights](#highlights) •
+[Advanced configuration](#advanced-configuration) •
 
 <p></p>
 
-A minimal input styling plugin for Neovim with notification and
-LSP progress support.
+A pretty complete set of Neovim UI components for
+notification, input and (LSP) progress.
 
-Juu is swahili for "up" or "above".
+Juu is swahili for "up" or "above."
 
 It styles the input and select windows in Neovim,
 provides a configurable `vim.notify()` backend,
-and displays LSP progress notifications.
+and displays (LSP) progress notifications.
 
 <p></p>
 
 </div>
 
 > [!WARNING]
-> This is a fork of the archived [dressing.nvim](https://github.com/stevearc/dressing.nvim)
-> that is being maintained.
+> This is a revamp of
+> [dressing.nvim](https://github.com/stevearc/dressing.nvim)
+> and
+> [fidget.nvim](https://github.com/j-hui/fidget.nvim).
 >
-> All the hard work has been done by [Steven Arcangeli](https://github.com/stevearc),
-> we're just keeping it alive.
-
-Why the fork? We like snacks.nvim 🍿,
-but find it overkill for just styling the inputs.
-
-Additionally, you get notification and LSP progress functionality,
-providing a unified UI experience for inputs,
-selections, notifications, and LSP progress.
+> All the hard work has been done by
+> [Steven Arcangeli](https://github.com/stevearc) and
+> [John Hui](https://github.com/j-hui).
 
 - [Requirements](#requirements)
 - [Screenshots](#screenshots)
@@ -49,7 +49,7 @@ selections, notifications, and LSP progress.
 
 ## Requirements
 
-- Neovim 0.10.0+
+- Neovim 0.11.5+ (might work on earlier versions, but not tested)
 
 ## Installation
 
@@ -313,9 +313,11 @@ require("juu").setup({
 
 ### Notification Configuration
 
-Juu.nvim includes a notification system that can replace `vim.notify()`. By default,
-it overrides `vim.notify()` to display notifications in a corner window. You can
-configure it like this:
+Juu.nvim includes a notification system that replaces
+`vim.notify()` by default.
+
+Notifications are displayed in a corner window.
+You can configure it like this:
 
 ```lua
 require("juu").setup({
@@ -346,17 +348,157 @@ require("juu").setup({
       relative = "editor",        -- Position relative to
       avoid = {},                 -- Filetypes to avoid (e.g., { "NvimTree" })
     },
+
+    -- Notification group configuration
+    configs = {
+      default = {
+        -- Enable colored message text based on log level (default: true)
+        color_messages = true,
+
+        -- Highlight styles for different log levels
+        debug_style = "Comment",
+        info_style = "Question",
+        warn_style = "WarningMsg",
+        error_style = "ErrorMsg",
+      },
+    },
   },
 })
 ```
 
+#### Notification Titles and Inverted Colors
+
+Notification titles (annotes) are displayed with
+**inverted colors** for better visibility:
+
+the foreground color of the log level becomes the background,
+and the background becomes the foreground.
+This creates a badge-like appearance for the title.
+
+For example, with an error notification:
+
+- **Message text**: Uses the regular error colors (typically red foreground)
+- **Title/annote**: Uses inverted colors (red background with black foreground)
+
+If the base highlight has a transparent background,
+the inverted version automatically
+uses black for the foreground to
+ensure the title text remains visible.
+
+You can view notification history using the `:Notifications` command,
+which works similarly to `:messages`.
+
+You can also filter by log level:
+
+```vim
+:Notifications          " Show all notifications
+:Notifications error    " Show only error notifications
+:Notifications info     " Show only info notifications
+:Notifications warn     " Show only warning notifications
+:Notifications debug    " Show only debug notifications
+```
+
+The notification system also supports
+the `title` parameter from `vim.notify()`:
+
+```lua
+vim.notify("Something went wrong", vim.log.levels.ERROR, { title = "Error" })
+-- The title "Error" will be displayed with inverted error colors (red background)
+```
+
+### Testing Progress Notifications
+
+You can simulate progress notifications for
+testing using the `progress.handle.create()` API:
+
+```lua
+local progress = require("juu.progress")
+
+-- Create a progress handle
+local handle = progress.handle.create({
+  title = "My Task",
+  message = "Starting...",
+  client = { name = "My Test-Client" },
+  percentage = 0,
+  cancellable = true,
+})
+
+-- Update progress over time
+handle.message = "Processing..."
+handle.percentage = 25
+
+handle:report({
+  message = "Halfway there...",
+  percentage = 50,
+})
+
+-- Finish the task
+handle:finish()
+```
+
+For a more complete example that simulates progress over time:
+
+```lua
+-- Simulate a 5-second progress task
+local progress = require("juu.progress")
+local handle = progress.handle.create({
+  title = "Test Task",
+  message = "Starting...",
+  client = { name = "My Test-Client" },
+  percentage = 0,
+})
+
+local timer = vim.loop.new_timer()
+local step = 0
+timer:start(0, 100, function()
+  step = step + 1
+  local percentage = math.min(100, step * 2)
+  handle:report({
+    message = string.format("Processing... (%d%%)", percentage),
+    percentage = percentage,
+  })
+  
+  if percentage >= 100 then
+    timer:stop()
+    timer:close()
+    handle:finish()
+  end
+end)
+```
+
+There is also a demo file included with the plugin at
+`lua/juu/demos/progress/loading.lua` that you can run with:
+
+```vim
+:lua require("juu.demos.progress.loading").simulate()
+```
+
+
 ### LSP Progress Configuration
 
-Juu.nvim automatically tracks and displays LSP progress messages. Configure it like this:
+Juu.nvim automatically tracks and displays LSP progress messages.
+
+You can disable LSP progress tracking by setting `modules.lsp = nil`:
 
 ```lua
 require("juu").setup({
   progress = {
+    modules = {
+      lsp = nil,  -- Disable LSP progress tracking
+    },
+  },
+})
+```
+
+Configure it like this:
+
+```vim
+
+
+```lua
+require("juu").setup({
+  progress = {
+    -- General progress options
     -- Poll rate: 0 = immediate, >0 = Hz, false = disabled
     poll_rate = 0,
 
@@ -369,19 +511,26 @@ require("juu").setup({
     -- Ignore new tasks that don't contain a message
     ignore_empty_message = false,
 
-    -- How to group progress messages (default: by LSP server name)
+    -- How to group progress messages (default: by client name)
     notification_group = function(msg)
-      return msg.lsp_client.name
+      return msg.client.name
     end,
 
-    -- Clear notification group when LSP server detaches
-    clear_on_detach = function(client_id)
-      local client = vim.lsp.get_client_by_id(client_id)
-      return client and client.name or nil
-    end,
-
-    -- List of LSP servers to ignore
+    -- List of clients to ignore
     ignore = {},
+
+    -- Module-specific configuration
+    modules = {
+      -- LSP progress module configuration
+      -- Set to `nil` to disable LSP progress tracking entirely
+      lsp = {
+        -- Configure the LSP progress ring buffer size
+        progress_ringbuf_size = 0,
+
+        -- Log $/progress handler invocations (for debugging)
+        log_handler = false,
+      },
+    },
 
     -- Display options
     display = {
@@ -440,32 +589,5 @@ require('juu').setup({
   }
 })
 
-```
-
-## Notes for plugin authors
-
-TL;DR: you can customize the telescope `vim.ui.select` implementation by passing `telescope` into `opts`.
-
-The `vim.ui` hooks are a great boon for us because we can now assume that users
-will have a reasonable UI available for simple input operations. We no longer
-have to build separate implementations for each of fzf, telescope, ctrlp, etc.
-The tradeoff is that `vim.ui.select` is less customizable than any of these
-options, so if you wanted to have a preview window (like telescope supports), it
-is no longer an option.
-
-My solution to this is extending the `opts` that are passed to `vim.ui.select`.
-You can add a `telescope` field that will be passed directly into the picker,
-allowing you to customize any part of the UI. If a user has both juu and
-telescope installed, they will get your custom picker UI. If either of those
-are not true, the selection UI will gracefully degrade to whatever the user has
-configured for `vim.ui.select`.
-
-An example of usage:
-
-```lua
-vim.ui.select({'apple', 'banana', 'mango'}, {
-  prompt = "Title",
-  telescope = require("telescope.themes").get_cursor(),
-}, function(selected) end)
 ```
 
