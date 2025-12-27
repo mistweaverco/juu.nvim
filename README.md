@@ -1,12 +1,17 @@
 <div align="center">
 
-![Juu Logo](assets/logo.svg)
+![Juu Logo][logo]
 
 # Juu.nvim
 
-[![Made with love](assets/badge-made-with-love.svg)](https://github.com/mistweaverco/juu.nvim/graphs/contributors)
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/mistweaverco/juu.nvim?style=for-the-badge)](https://github.com/mistweaverco/juu.nvim/releases/latest)
+[![Made with love][badge-made-with-love]][contributors]
+[![Development status][badge-development-status]][development-status]
+[![Our manifesto][badge-our-manifesto]][our-manifesto]
+![Made with lua][badge-made-with-lua]
+[![Latest release][badge-latest-release]][latest-release]
 
+[Terms used](#terms-used) •
+[The what](#what) •
 [Requirements](#requirements) •
 [Installation](#installation) •
 [Configuration](#configuration) •
@@ -16,14 +21,9 @@
 <p></p>
 
 A pretty complete set of Neovim UI components for
-notification, input and (LSP) progress.
+notification, input and progress.
 
 Juu is swahili for "up" or "above."
-
-It styles the input and select windows in Neovim,
-provides a configurable `vim.notify()` and
-[`juu.progress`](./lua/juu/demos/progress/loading.lua) backend,
-and displays (LSP) progress notifications.
 
 <p></p>
 
@@ -39,14 +39,29 @@ and displays (LSP) progress notifications.
 > [Steven Arcangeli](https://github.com/stevearc) and
 > [John Hui](https://github.com/j-hui).
 
-- [Requirements](#requirements)
-- [Screenshots](#screenshots)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Highlights](#highlights)
-- [Advanced configuration](#advanced-configuration)
-- [Notes for plugin authors](#notes-for-plugin-authors)
-- [Alternative and related projects](#alternative-and-related-projects)
+## Terms used
+
+- *Language Server Protocol* (LSP): A protocol that defines
+  how code editors and IDEs communicate with language servers.
+- *Debug Adapter Protocol* (DAP): A protocol that defines
+  how code editors and IDEs communicate with debuggers.
+- *Package*: A package is a LSP server, DAP server, formatter
+  or linter that can be installed via Zana.
+- *Provider*: A provider is a package source,
+    e.g., `npm`, `pypi`, `golang`, etc.
+- *Package ID*: A package ID is a unique identifier for a package,
+    e.g., `npm:@mistweavercokulala-ls@0.1.0`.
+- *Zana Registry*: The Zana Registry is a registry of
+    available packages that can be installed via Zana.
+- *Terminal User Interface* (TUI): A text-based user interface
+  that runs in a terminal emulator.
+
+## What?
+
+Juu.nvim styles the input and select windows in Neovim,
+provides a configurable `vim.notify` and
+[`juu.progress`](./lua/juu/demos/progress/loading.lua) backend,
+and displays (LSP) progress notifications.
 
 ## Requirements
 
@@ -592,3 +607,16 @@ require('juu').setup({
 
 ```
 
+
+
+[badge-made-with-lua]: assets/badge-made-with-lua.svg
+[badge-development-status]: assets/badge-development-status.svg
+[badge-our-manifesto]: assets/badge-our-manifesto.svg
+[badge-made-with-love]: assets/badge-made-with-love.svg
+[badge-latest-release]: https://img.shields.io/github/v/release/mistweaverco/juu.nvim?style=for-the-badge
+[our-manifesto]: https://mistweaverco.com/manifesto
+[development-status]: https://github.com/orgs/mistweaverco/projects/5/views/1?filterQuery=repo%3Amistweaverco%2Fjuu.nvim
+[contributors]: https://github.com/mistweaverco/juu.nvim/graphs/contributors
+[logo]: assets/logo.svg
+[swahili]: https://en.wikipedia.org/wiki/Swahili_language
+[latest-release]: https://github.com/mistweaverco/juu.nvim/releases/latest
