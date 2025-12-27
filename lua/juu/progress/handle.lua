@@ -42,9 +42,6 @@ function ProgressHandle.new(message)
   -- Load the notification config
   progress.load_config(self._raw)
 
-  -- Initial update (for begin)
-  notification.notify(progress.format_progress(self._raw))
-
   return self
 end
 
