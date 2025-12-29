@@ -167,14 +167,17 @@ local function create_inverted_annote_style(base_style)
   if not base_style then
     return nil
   end
+  local base_hl, theme_hl, ok
 
   local inverted_name = "JuuNotifyAnnote" .. base_style
-  local ok, base_hl = pcall(vim.api.nvim_get_hl, 0, { name = base_style })
+  ok, base_hl = pcall(vim.api.nvim_get_hl, 0, { name = base_style })
 
   if not ok or not base_hl then
     -- If base highlight doesn't exist, try to link to a default inverted style
     return nil
   end
+
+  ok, theme_hl = pcall(vim.api.nvim_get_hl, 0, { name = "Normal" })
 
   -- Get foreground and background colors
   -- nvim_get_hl returns fg/bg as numbers, we need to convert them
@@ -207,6 +210,8 @@ local function create_inverted_annote_style(base_style)
     -- Fallback: use reverse attribute
     hl_opts.reverse = true
   end
+
+  hl_opts.fg = theme_hl.bg or hl_opts.fg
 
   vim.api.nvim_set_hl(0, inverted_name, hl_opts)
 
