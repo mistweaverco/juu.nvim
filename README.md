@@ -12,6 +12,7 @@
 
 [Terms used](#terms-used) •
 [The what](#what) •
+[Screenshots](#screenshots) •
 [Requirements](#requirements) •
 [Installation](#installation) •
 [Configuration](#configuration) •
@@ -51,6 +52,16 @@ provides a configurable
 [`juu.notify`](./lua/juu/notify/notification.lua) (`vim.notify`) and
 [`juu.progress`](./lua/juu/demos/progress/loading.lua) backend,
 and displays (LSP) progress notifications.
+
+## Screenshots
+
+### Notifications
+
+![Screenshot of juu.notify][screenshot-notify]
+
+### Progress
+
+![Screenshot of juu.progress][screenshot-progress]
 
 ## Requirements
 
@@ -606,6 +617,8 @@ require('juu').setup({
 [badge-our-manifesto]: assets/badge-our-manifesto.svg
 [badge-made-with-love]: assets/badge-made-with-love.svg
 [badge-latest-release]: https://img.shields.io/github/v/release/mistweaverco/juu.nvim?style=for-the-badge
+[screenshot-notify]: ./web/static/assets/screenshots/notify.png
+[screenshot-progress]: ./web/static/assets/screenshots/progress.png
 [our-manifesto]: https://mistweaverco.com/manifesto
 [development-status]: https://github.com/orgs/mistweaverco/projects/5/views/1?filterQuery=repo%3Amistweaverco%2Fjuu.nvim
 [contributors]: https://github.com/mistweaverco/juu.nvim/graphs/contributors
