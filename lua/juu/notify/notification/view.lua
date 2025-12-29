@@ -575,15 +575,18 @@ function M.render(now, groups)
 
     local last_line = current_line_index
 
-    -- Track item boundaries for border rendering
+    -- Track item boundaries for border rendering (only if borders are enabled)
     if metadata.type == "item" and metadata.item and metadata.config then
-      table.insert(item_boundaries, {
-        first_line = first_line,
-        last_line = last_line,
-        config = metadata.config,
-        style = metadata.style,
-        width = max_width,
-      })
+      local borders_enabled = metadata.config.borders ~= false -- Default to true if not specified
+      if borders_enabled then
+        table.insert(item_boundaries, {
+          first_line = first_line,
+          last_line = last_line,
+          config = metadata.config,
+          style = metadata.style,
+          width = max_width,
+        })
+      end
     end
   end
 
