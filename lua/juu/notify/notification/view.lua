@@ -207,6 +207,66 @@ function M.render_group_separator()
   -- TODO: cache the return value, this never changes
 end
 
+---@class JuuNotifyViewBorderStyle
+---@field border_left_char string Vertical line for left border on content lines
+---@field border_right_char string Vertical line for right border on content lines
+---@field border_top_char string Horizontal line for top border
+---@field border_bottom_char string Horizontal line for bottom border
+---@field border_top_left_char string Corner character for top-left
+---@field border_top_right_char string Corner character for top-right
+---@field border_bottom_left_char string Corner character for bottom-left
+---@field border_bottom_right_char string Corner character for bottom-right
+---@field base_style string Highlight group to use for border
+
+--- Get border styling information based on style or level and config.
+---@param config Config
+---@param style string|nil The highlight group name to use for borders
+---@param level number|string|nil Optional level (used if style is not provided)
+---@return JuuNotifyViewBorderStyle border_style
+function M.get_styled_with_border(config, style, level)
+  local border_left_char = "│"
+  local border_top_left_char = "╭"
+  local border_top_right_char = "╮"
+  local border_bottom_left_char = "╰"
+  local border_bottom_right_char = "╯"
+  local border_right_char = "│"
+  local border_top_char = "─"
+  local border_bottom_char = "─"
+  -- Use style directly if provided, otherwise resolve from level
+  local base_style = style
+  if not base_style then
+    -- Get style from level, similar to how it's done in model.lua
+    if type(level) == "number" then
+      if level == vim.log.levels.INFO and config.info_style then
+        base_style = config.info_style
+      elseif level == vim.log.levels.WARN and config.warn_style then
+        base_style = config.warn_style
+      elseif level == vim.log.levels.ERROR and config.error_style then
+        base_style = config.error_style
+      elseif level == vim.log.levels.DEBUG and config.debug_style then
+        base_style = config.debug_style
+      end
+    elseif type(level) == "string" then
+      base_style = level
+    end
+  end
+
+  -- Fallback to annote_style or Question
+  base_style = base_style or config.annote_style or "Question"
+
+  return {
+    border_left_char = border_left_char,
+    border_right_char = border_right_char,
+    border_top_char = border_top_char,
+    border_bottom_char = border_bottom_char,
+    border_top_left_char = border_top_left_char,
+    border_top_right_char = border_top_right_char,
+    border_bottom_left_char = border_bottom_left_char,
+    border_bottom_right_char = border_bottom_right_char,
+    base_style = base_style,
+  }
+end
+
 --- Render the header of a group, containing group name and icon.
 ---
 ---@param   now   number    timestamp of current render frame
@@ -430,11 +490,14 @@ end
 ---@param groups Group[]
 ---@return NotificationLine[] lines
 ---@return integer width
+---@return table item_boundaries Metadata about which lines belong to which items for border rendering
 function M.render(now, groups)
   is_multigrid_ui = M.check_multigrid_ui()
 
   ---@type NotificationLine[][]
   local chunks = {}
+  ---@type table[] Metadata for each chunk: {type: "item"|"header"|"separator", item?: Item, config?: Config}
+  local chunk_metadata = {}
   local max_width = 0
 
   for idx, group in ipairs(groups) do
@@ -442,6 +505,7 @@ function M.render(now, groups)
       local sep, sep_width = M.render_group_separator()
       if sep then
         table.insert(chunks, sep)
+        table.insert(chunk_metadata, { type = "separator" })
         max_width = math.max(max_width, sep_width)
       end
     end
@@ -449,6 +513,7 @@ function M.render(now, groups)
     local hdr, hdr_width = M.render_group_header(now, group)
     if hdr then
       table.insert(chunks, hdr)
+      table.insert(chunk_metadata, { type = "header" })
       max_width = math.max(max_width, hdr_width)
     end
 
@@ -462,6 +527,8 @@ function M.render(now, groups)
       local it, it_width = M.render_item(item, group.config, counts[item.content_key or item])
       if it then
         table.insert(chunks, it)
+        -- Store the item's style directly - it's already the correct highlight group
+        table.insert(chunk_metadata, { type = "item", item = item, config = group.config, style = item.style })
         max_width = math.max(max_width, it_width)
       end
     end
@@ -475,12 +542,34 @@ function M.render(now, groups)
   end
 
   local lines = {}
+  local item_boundaries = {} -- {first_line_index, last_line_index, config, level}[]
+  local current_line_index = 0
+
   for i = start, stop, step do
-    for _, line in ipairs(chunks[i]) do
+    local chunk = chunks[i]
+    local metadata = chunk_metadata[i]
+    local first_line = current_line_index + 1
+
+    for _, line in ipairs(chunk) do
       table.insert(lines, line)
+      current_line_index = current_line_index + 1
+    end
+
+    local last_line = current_line_index
+
+    -- Track item boundaries for border rendering
+    if metadata.type == "item" and metadata.item and metadata.config then
+      table.insert(item_boundaries, {
+        first_line = first_line,
+        last_line = last_line,
+        config = metadata.config,
+        style = metadata.style,
+        width = max_width,
+      })
     end
   end
-  return lines, max_width
+
+  return lines, max_width, item_boundaries
 end
 
 --- Display notification items in Neovim messages.

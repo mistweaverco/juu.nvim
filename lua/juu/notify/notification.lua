@@ -448,7 +448,7 @@ notification.poller = poll.Poller({
     notification.model.tick(self:now(), state)
 
     -- TODO: if not modified, don't re-render
-    local lines, width = notification.view.render(self:now(), state.groups)
+    local lines, width, item_boundaries = notification.view.render(self:now(), state.groups)
 
     if #lines > 0 then
       if state.view_suppressed then
@@ -456,7 +456,7 @@ notification.poller = poll.Poller({
       end
 
       notification.window.guard(function()
-        notification.window.set_lines(lines, width)
+        notification.window.set_lines(lines, width, item_boundaries)
       end)
       return true
     else
