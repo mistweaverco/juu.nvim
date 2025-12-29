@@ -43,23 +43,12 @@ Juu is swahili for "up" or "above."
 
 - *Language Server Protocol* (LSP): A protocol that defines
   how code editors and IDEs communicate with language servers.
-- *Debug Adapter Protocol* (DAP): A protocol that defines
-  how code editors and IDEs communicate with debuggers.
-- *Package*: A package is a LSP server, DAP server, formatter
-  or linter that can be installed via Zana.
-- *Provider*: A provider is a package source,
-    e.g., `npm`, `pypi`, `golang`, etc.
-- *Package ID*: A package ID is a unique identifier for a package,
-    e.g., `npm:@mistweavercokulala-ls@0.1.0`.
-- *Zana Registry*: The Zana Registry is a registry of
-    available packages that can be installed via Zana.
-- *Terminal User Interface* (TUI): A text-based user interface
-  that runs in a terminal emulator.
 
 ## What?
 
 Juu.nvim styles the input and select windows in Neovim,
-provides a configurable `vim.notify` and
+provides a configurable
+[`juu.notify`](./lua/juu/notify/notification.lua) (`vim.notify`) and
 [`juu.progress`](./lua/juu/demos/progress/loading.lua) backend,
 and displays (LSP) progress notifications.
 
