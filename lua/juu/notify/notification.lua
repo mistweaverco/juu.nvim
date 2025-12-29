@@ -70,6 +70,7 @@ local poll = require("juu.poll")
 ---@field skip_history      boolean|nil   Whether messages should be preserved in history
 ---@field update_hook       fun(item: Item)|false|nil   Called when an item is updated; defaults to `false`
 ---@field color_messages    boolean|nil   Whether to apply log level colors to message text (defaults to `true`)
+---@field borders           boolean|nil   Whether to display borders around notification items (defaults to `true`)
 
 --- Notification element containing a message and optional annotation.
 ---
@@ -153,6 +154,7 @@ notification.default_config = {
   warn_annote = "WARN",
   error_annote = "ERROR",
   color_messages = true,
+  borders = true,
   update_hook = function(item)
     notification.set_content_key(item)
   end,
@@ -448,7 +450,7 @@ notification.poller = poll.Poller({
     notification.model.tick(self:now(), state)
 
     -- TODO: if not modified, don't re-render
-    local lines, width = notification.view.render(self:now(), state.groups)
+    local lines, width, item_boundaries = notification.view.render(self:now(), state.groups)
 
     if #lines > 0 then
       if state.view_suppressed then
@@ -456,7 +458,7 @@ notification.poller = poll.Poller({
       end
 
       notification.window.guard(function()
-        notification.window.set_lines(lines, width)
+        notification.window.set_lines(lines, width, item_boundaries)
       end)
       return true
     else

@@ -107,7 +107,7 @@ end
 ---
 ---@param level_str string|nil
 ---@return number|nil
-local function level_str_to_num(level_str)
+function M.level_str_to_num(level_str)
   if not level_str then
     return nil
   end
@@ -161,7 +161,7 @@ local function matches_filter(filter, now, item)
   end
 
   if filter.level ~= nil then
-    local filter_level = type(filter.level) == "string" and level_str_to_num(filter.level) or filter.level
+    local filter_level = type(filter.level) == "string" and M.level_str_to_num(filter.level) or filter.level
     if filter_level ~= nil then
       local item_level = infer_level_from_item(item)
       if item_level ~= filter_level then
@@ -210,9 +210,16 @@ local function style_from_level(config, level)
     elseif level == vim.log.levels.DEBUG and config.debug_style then
       return config.debug_style
     end
-  else
+  elseif type(level) == "string" then
+    -- Convert string level to number first, then look up the style
+    local level_num = M.level_str_to_num(level)
+    if level_num then
+      return style_from_level(config, level_num)
+    end
+    -- If it's not a recognized level string, treat it as a style name directly
     return level
   end
+  return nil
 end
 
 --- Resolve highlight group to get actual colors

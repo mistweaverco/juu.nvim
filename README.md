@@ -371,6 +371,9 @@ require("juu").setup({
         -- Enable colored message text based on log level (default: true)
         color_messages = true,
 
+        -- Enable borders around notification items (default: true)
+        borders = true,
+
         -- Highlight styles for different log levels
         debug_style = "Comment",
         info_style = "Question",
