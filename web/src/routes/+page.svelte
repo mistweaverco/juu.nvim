@@ -100,16 +100,24 @@
 						{/if}
 					</div>
 					<div class="absolute left-5 right-5 top-1/2 flex -translate-y-1/2 transform justify-between">
+						{#if index !== 0}
 						<a
 							on:click={preventGalleryJump}
-							href={"#slide" + (index === 0 ? screenshots.length : index)}
+							href={"#slide" + (index)}
 							class="btn btn-circle">❮</a
 						>
-						<a
-							on:click={preventGalleryJump}
-							href={"#slide" + (index === screenshots.length - 1 ? 1 : index + 2)}
-							class="btn btn-circle">❯</a
-						>
+						{:else}
+							<div></div>
+						{/if}
+						{#if index !== screenshots.length - 1}
+							<a
+								on:click={preventGalleryJump}
+								href={"#slide" +  (index + 2)}
+								class="btn btn-circle">❯</a
+							>
+						{:else}
+							<div></div>
+						{/if}
 					</div>
 				</div>
 			</div>
