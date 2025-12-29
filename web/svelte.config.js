@@ -1,8 +1,8 @@
 import tailwindcss from "@tailwindcss/vite";
-import type { Config } from "@sveltejs/kit";
 import adapter from "@sveltejs/adapter-static";
 
-const config: Config = {
+/** @type {import('@sveltejs/kit').Config} */
+const config = {
   kit: {
     adapter: adapter(),
   },
