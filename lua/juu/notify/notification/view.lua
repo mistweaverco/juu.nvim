@@ -247,7 +247,25 @@ function M.get_styled_with_border(config, style, level)
         base_style = config.debug_style
       end
     elseif type(level) == "string" then
-      base_style = level
+      -- Convert string level to number first, then look up the style
+      local model = require("juu.notify.notification.model")
+      local level_num = model.level_str_to_num(level)
+
+      if level_num then
+        -- Recursively call to resolve from numeric level
+        if level_num == vim.log.levels.INFO and config.info_style then
+          base_style = config.info_style
+        elseif level_num == vim.log.levels.WARN and config.warn_style then
+          base_style = config.warn_style
+        elseif level_num == vim.log.levels.ERROR and config.error_style then
+          base_style = config.error_style
+        elseif level_num == vim.log.levels.DEBUG and config.debug_style then
+          base_style = config.debug_style
+        end
+      else
+        -- If it's not a recognized level string, treat it as a style name directly
+        base_style = level
+      end
     end
   end
 

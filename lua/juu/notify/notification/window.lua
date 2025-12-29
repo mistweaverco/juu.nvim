@@ -650,7 +650,7 @@ function M.set_lines(lines, width, item_boundaries)
 
     -- Render top border on the line BEFORE this one (if it exists)
     if top_border_boundary then
-      local border_styles = view.get_styled_with_border(boundary.config, boundary.style)
+      local border_styles = view.get_styled_with_border(top_border_boundary.config, top_border_boundary.style)
       local border_right_char = border_styles.border_right_char
       local border_top_char = border_styles.border_top_char
       local border_top_left_char = border_styles.border_top_left_char
