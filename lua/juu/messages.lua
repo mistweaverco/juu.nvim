@@ -194,12 +194,66 @@ local function another_ui_handles_messages()
   return package.loaded["noice"] ~= nil
 end
 
+--- When |vim._core.ui2| is enabled, Neovim delivers |msg_show| to every |vim.ui_attach()| client.
+--- ui2 draws into its cmd/msg buffers and juu notifies — same text twice. If we would redirect to
+--- notify, skip ui2's |msg_show| implementation so only juu.notify runs.
+---@param cfg table
+---@param exclude table<string, true>
+---@return boolean patched
+local function patch_ui2_msg_show(cfg, exclude)
+  local ok, ui2 = pcall(require, "vim._core.ui2")
+  if not ok or not ui2 or ui2.cfg == nil or ui2.cfg.enable == false then
+    return false
+  end
+  local ok2, msg = pcall(require, "vim._core.ui2.messages")
+  if not ok2 or type(msg) ~= "table" or type(msg.msg_show) ~= "function" then
+    return false
+  end
+  if msg._juu_skip_redirect_orig then
+    return true
+  end
+  local orig = msg.msg_show
+  msg._juu_skip_redirect_orig = orig
+  function msg.msg_show(kind, content, replace_last, hist, append, id, trigger)
+    if vim.g.juu_msg_redirect_suppress then
+      return orig(kind, content, replace_last, hist, append, id, trigger)
+    end
+    kind = kind or ""
+    local text = content_to_string(content)
+    if not should_redirect(cfg, kind, text, trigger, exclude) then
+      return orig(kind, content, replace_last, hist, append, id, trigger)
+    end
+    return
+  end
+  return true
+end
+
+--- |vim._core.ui2| uses `set_cmdheight = false` on its own |vim.ui_attach()|, so Neovim may ignore Juu's
+--- `set_cmdheight = true` when both are active. Re-apply |'cmdheight'| after we handle |msg_show|.
+---@param cfg table
+local function schedule_cmdheight_zero(cfg)
+  if cfg.set_cmdheight_zero == false then
+    return
+  end
+  vim.schedule(function()
+    if vim.v.exiting ~= 0 then
+      return
+    end
+    vim.o.cmdheight = 0
+  end)
+end
+
 ---@param cfg table
 local function attach(cfg)
   M._ns = vim.api.nvim_create_namespace("juu.messages")
   local exclude = merge_exclude(cfg)
 
-  vim.ui_attach(M._ns, { ext_messages = true, set_cmdheight = false }, function(event, ...)
+  patch_ui2_msg_show(cfg, exclude)
+
+  -- Prefer true so standalone TUI hides the legacy row. With ui2, capability merge often keeps cmdheight>0;
+  -- |schedule_cmdheight_zero| runs after each redirected |msg_show| to fix that.
+  local set_ch = cfg.set_cmdheight_zero ~= false
+  vim.ui_attach(M._ns, { ext_messages = true, set_cmdheight = set_ch }, function(event, ...)
     if event == "msg_show" then
       local kind, content, replace_last, _, _, id, trigger = ...
       kind = kind or ""
@@ -217,10 +271,12 @@ local function attach(cfg)
         local ms = cfg.dedupe_ms
         local action = dedupe_action(text, ms)
         if action == "skip" then
+          schedule_cmdheight_zero(cfg)
           return
         end
         local use_chain = action == "supersede" or (action == "new" and likely_write_prefix(text))
         notify_message(kind, text, replace_last, id, cfg, use_chain)
+        schedule_cmdheight_zero(cfg)
       end
 
       if vim.in_fast_event() then
@@ -270,12 +326,18 @@ function M.setup(user)
   end
 
   M._initialized = true
+  schedule_cmdheight_zero(merged)
 end
 
 function M.detach()
   if M._ns then
     pcall(vim.ui_detach, M._ns)
     M._ns = nil
+  end
+  local ok, msg = pcall(require, "vim._core.ui2.messages")
+  if ok and type(msg) == "table" and msg._juu_skip_redirect_orig then
+    msg.msg_show = msg._juu_skip_redirect_orig
+    msg._juu_skip_redirect_orig = nil
   end
   M._initialized = false
 end
