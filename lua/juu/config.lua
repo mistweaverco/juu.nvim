@@ -103,6 +103,7 @@
 ---@field filter fun(kind: string, text: string, trigger: string|nil): boolean|nil If set, only redirect when this returns true.
 ---@field opts table|nil Extra options passed to |juu.notify.notify| (e.g. title, ttl).
 ---@field dedupe_ms number|false|nil Skip a |msg_show| if the trimmed text matches the previous one within this many ms (default: 200). Set to false to disable (e.g. if you need every echo).
+---@field set_cmdheight_zero boolean|nil If true (default), pass `set_cmdheight` to |vim.ui_attach()| so |'cmdheight'| can become 0 and messages are not also drawn in the legacy bottom area. Set false only if you need a persistent cmdline row (see |vim.ui_attach()|).
 
 ---@class JuuUserConfig
 ---@field input table|nil Configuration for vim.ui.input
@@ -446,6 +447,8 @@ local default_config = {
     opts = nil,
     -- Avoid duplicate notifications when Nvim emits the same text twice in one batch (e.g. :write).
     dedupe_ms = 200,
+    -- Allow 'cmdheight' 0 with ext_messages so echoes do not also appear at the bottom of the screen.
+    set_cmdheight_zero = true,
   },
 }
 
