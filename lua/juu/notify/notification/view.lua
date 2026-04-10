@@ -5,6 +5,9 @@ local M = {}
 
 local window = require("juu.notify.notification.window")
 
+--- Used for history buffer and |echo_history()| timestamps.
+local HISTORY_TIME_FMT = "%Y-%m-%d %H:%M:%S"
+
 --- A list of highlighted tokens.
 ---@class NotificationLine : NotificationToken[]
 
@@ -593,6 +596,117 @@ function M.render(now, groups)
   return lines, max_width, item_boundaries
 end
 
+--- Omit the group column when it would only repeat the default group's title (e.g. "Notifications"):
+--- groups like `messages` use `configs[group_key] or configs.default`, so `group_key` is not "default"
+--- but `group_name` still comes from the default config.
+---@param item HistoryItem
+---@return boolean
+local function include_history_group_name(item)
+  if not item.group_name or #item.group_name == 0 then
+    return false
+  end
+  if item.group_key == "default" then
+    return false
+  end
+  local notify = require("juu.notify")
+  local def = notify.options and notify.options.configs and notify.options.configs.default
+  local def_name = def and def.name
+  if type(def_name) == "string" and item.group_name == def_name then
+    return false
+  end
+  return true
+end
+
+---@param items HistoryItem[]
+---@return string[]
+local function format_history_lines(items)
+  local lines = {}
+  for _, item in ipairs(items) do
+    local head = vim.fn.strftime(HISTORY_TIME_FMT, item.last_updated)
+    if include_history_group_name(item) then
+      head = head .. " " .. item.group_name
+    end
+    head = head .. " | "
+    if item.annote and #item.annote > 0 then
+      head = head .. item.annote .. " "
+    end
+    local msg_lines = vim.split(item.message, "\n", { plain = true })
+    head = head .. (msg_lines[1] or "")
+    table.insert(lines, head)
+    for i = 2, #msg_lines do
+      table.insert(lines, "  " .. msg_lines[i])
+    end
+    table.insert(lines, "")
+  end
+  if #lines > 0 and lines[#lines] == "" then
+    lines[#lines] = nil
+  end
+  if #lines == 0 then
+    lines[1] = "(no notification history)"
+  end
+  return lines
+end
+
+local HISTORY_BUF_NAME = "juu://notification-history"
+
+---@param name string
+---@return integer|nil
+local function find_buf_by_name(name)
+  for _, b in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_valid(b) and vim.api.nvim_buf_get_name(b) == name then
+      return b
+    end
+  end
+end
+
+---@param buf integer
+---@return integer|nil
+local function win_with_buf(buf)
+  for _, w in ipairs(vim.api.nvim_list_wins()) do
+    if vim.api.nvim_win_is_valid(w) and vim.api.nvim_win_get_buf(w) == buf then
+      return w
+    end
+  end
+end
+
+--- Open a scratch buffer with notification history (modifiable off, yank-friendly).
+--- Reuses the same buffer name so |:Juu history| can refresh without duplicate-name errors.
+---
+---@param items HistoryItem[]
+function M.open_history_buffer(items)
+  local text_lines = format_history_lines(items)
+
+  local buf = find_buf_by_name(HISTORY_BUF_NAME)
+  local created = false
+  if not buf then
+    buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_name(buf, HISTORY_BUF_NAME)
+    created = true
+  end
+
+  vim.bo[buf].modifiable = true
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, text_lines)
+  vim.bo[buf].buftype = "nofile"
+  vim.bo[buf].bufhidden = "wipe"
+  vim.bo[buf].swapfile = false
+  vim.bo[buf].modifiable = false
+
+  if created then
+    vim.keymap.set("n", "q", "<Cmd>close<CR>", { buffer = buf, silent = true, nowait = true })
+  end
+
+  local w = math.min(100, math.max(40, math.floor(vim.o.columns * 0.45)))
+  local existing = win_with_buf(buf)
+  if existing then
+    vim.api.nvim_set_current_win(existing)
+  else
+    vim.api.nvim_open_win(buf, true, {
+      split = "right",
+      width = w,
+    })
+  end
+end
+
 --- Display notification items in Neovim messages.
 ---
 --- TODO(j-hui): this is not very configurable, but I'm not sure what options to
@@ -602,45 +716,54 @@ end
 ---
 ---@param items HistoryItem[]
 function M.echo_history(items)
-  for _, item in ipairs(items) do
-    local is_multiline_msg = string.find(item.message, "\n") ~= nil
+  -- Avoid juu.messages turning each nvim_echo line into a new notification.
+  vim.g.juu_msg_redirect_suppress = 1
+  local ok, err = pcall(function()
+    for _, item in ipairs(items) do
+      local is_multiline_msg = string.find(item.message, "\n") ~= nil
 
-    local chunks = {}
+      local chunks = {}
 
-    table.insert(chunks, { vim.fn.strftime("%c", item.last_updated), "Comment" })
+      table.insert(chunks, { vim.fn.strftime(HISTORY_TIME_FMT, item.last_updated), "Comment" })
 
-    -- if item.group_icon and #item.group_icon > 0 then
-    --   table.insert(chunks, { " ", "MsgArea" })
-    --   table.insert(chunks, { item.group_icon, "Special" })
-    -- end
+      -- if item.group_icon and #item.group_icon > 0 then
+      --   table.insert(chunks, { " ", "MsgArea" })
+      --   table.insert(chunks, { item.group_icon, "Special" })
+      -- end
 
-    if item.group_name and #item.group_name > 0 then
-      table.insert(chunks, { " ", "MsgArea" })
-      table.insert(chunks, { item.group_name, "Special" })
+      if include_history_group_name(item) then
+        table.insert(chunks, { " ", "MsgArea" })
+        table.insert(chunks, { item.group_name, "Special" })
+      end
+
+      table.insert(chunks, { " | ", "Comment" })
+
+      if item.annote and #item.annote > 0 then
+        -- Use annote_style if available (inverted colors), otherwise fall back to style
+        local annote_hl = item.annote_style or item.style or "Comment"
+        table.insert(chunks, { item.annote, annote_hl })
+      end
+
+      if is_multiline_msg then
+        table.insert(chunks, { "\n", "MsgArea" })
+      else
+        -- Space between annote/title and message (matches annote_separator in notify config)
+        table.insert(chunks, { " ", "MsgArea" })
+      end
+
+      -- Use item.style for message if available, otherwise use MsgArea
+      table.insert(chunks, { item.message, item.style or "MsgArea" })
+
+      if is_multiline_msg then
+        table.insert(chunks, { "\n", "MsgArea" })
+      end
+
+      vim.api.nvim_echo(chunks, false, {})
     end
-
-    table.insert(chunks, { " | ", "Comment" })
-
-    if item.annote and #item.annote > 0 then
-      -- Use annote_style if available (inverted colors), otherwise fall back to style
-      local annote_hl = item.annote_style or item.style or "Comment"
-      table.insert(chunks, { item.annote, annote_hl })
-    end
-
-    if is_multiline_msg then
-      table.insert(chunks, { "\n", "MsgArea" })
-    else
-      table.insert(chunks, { " ", "MsgArea" })
-    end
-
-    -- Use item.style for message if available, otherwise use MsgArea
-    table.insert(chunks, { item.message, item.style or "MsgArea" })
-
-    if is_multiline_msg then
-      table.insert(chunks, { "\n", "MsgArea" })
-    end
-
-    vim.api.nvim_echo(chunks, false, {})
+  end)
+  vim.g.juu_msg_redirect_suppress = nil
+  if not ok then
+    error(err)
   end
 end
 

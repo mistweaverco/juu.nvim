@@ -537,12 +537,12 @@ function notification.get_history(filter)
   return notification.model.make_history(state, poll.get_time(), filter)
 end
 
---- Show the notifications history in the |nvim_echo()| buffer.
+--- Show the notifications history in a read-only split buffer (copy with |y|).
 ---
 ---@param filter  HistoryFilter|Key|nil  options or group_key for filtering history
 function notification.show_history(filter)
   local history = notification.get_history(filter)
-  notification.view.echo_history(history)
+  notification.view.open_history_buffer(history)
 end
 
 --- Get list of active notification group keys.

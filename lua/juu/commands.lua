@@ -500,7 +500,7 @@ SC.subcommands = {
     },
   },
   history = {
-    desc = "Show notifications history",
+    desc = "Open notifications history in a read-only split (q to close)",
     func = function(args)
       args.group_key = args[1] or args.group_key
       require("juu.notify").show_history(args)
@@ -605,7 +605,7 @@ function SC.setup()
     end
     require("juu.notify").show_history(filter)
   end, {
-    desc = "Show notifications history (like :messages). Optional argument: filter by level (info, error, warn, debug)",
+    desc = "Open notification history in a read-only split (q to close). Optional argument: filter by level (info, error, warn, debug)",
     nargs = "?",
     complete = function(_, _, _)
       return { "info", "error", "warn", "debug" }

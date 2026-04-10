@@ -16,13 +16,14 @@
 [Requirements](#requirements) •
 [Installation](#installation) •
 [Configuration](#configuration) •
+[Floating cmdline](#floating-cmdline) •
+[Editor messages](#editor-messages) •
 [Highlights](#highlights) •
 [Advanced configuration](#advanced-configuration) •
 
 <p></p>
 
-A pretty complete set of Neovim UI components for
-notification, input and progress.
+A pretty complete set of Neovim UI components.
 
 Juu is swahili for "up" or "above."
 
@@ -51,7 +52,11 @@ Juu.nvim styles the input and select windows in Neovim,
 provides a configurable
 [`juu.notify`](./lua/juu/notify/notification.lua) (`vim.notify`) and
 [`juu.progress`](./lua/juu/demos/progress/loading.lua) backend,
-and displays (LSP) progress notifications.
+displays (LSP) progress notifications,
+can float the ext-cmdline via [`juu.cmdline`](./lua/juu/cmdline.lua) (similar in spirit to
+[tiny-cmdline.nvim](https://github.com/rachartier/tiny-cmdline.nvim)),
+and can route [`msg_show`](https://neovim.io/doc/user/api-ui-events.html#ui-messages) traffic into
+[`juu.messages`](./lua/juu/messages.lua) so short editor messages show as notifications.
 
 ## Screenshots
 
@@ -69,7 +74,17 @@ and displays (LSP) progress notifications.
 
 ## Installation
 
+If you want to have the floating command line,
+you need Neovim 0.12+ and have this enabled:
+
+```lua
+-- Required for the command line to work
+require("vim._core.ui2").enable({})
+vim.o.cmdheight = 0
+```
+
 juu.nvim supports all the usual plugin managers
+
 
 <details>
   <summary>lazy.nvim</summary>
@@ -159,6 +174,18 @@ require("juu").setup({
   -- LSP progress tracking (enabled by default, set to false to disable)
   progress = {
     -- See below for more progress options
+  },
+
+  -- Floating cmdline (Neovim 0.12+ ui2). Set to false to disable.
+  cmdline = {
+    -- enabled = true,
+  },
+
+  -- Redirect editor messages (e.g. :write) to juu.notify. Requires notify.
+  -- Set to false to disable. Disabled automatically if noice.nvim is loaded.
+  messages = {
+    -- enabled = true,
+    -- dedupe_ms = 200, -- skip duplicate msg_show with the same text within this window
   },
 
   -- Input styling configuration
@@ -404,8 +431,8 @@ the inverted version automatically
 uses black for the foreground to
 ensure the title text remains visible.
 
-You can view notification history using the `:Notifications` command,
-which works similarly to `:messages`.
+You can view notification history using the `:Notifications` command or `:Juu history`.
+History opens in a **read-only split** so you can **yank** or copy text; press **`q`** to close the window.
 
 You can also filter by log level:
 
@@ -424,6 +451,36 @@ the `title` parameter from `vim.notify()`:
 vim.notify("Something went wrong", vim.log.levels.ERROR, { title = "Error" })
 -- The title "Error" will be displayed with inverted error colors (red background)
 ```
+
+### Floating cmdline
+
+**Neovim 0.12+.** When you run `require("juu").setup()`, Juu installs a small integration with Neovim’s
+experimental [ui2](https://neovim.io/doc/user/lua.html#vim._core.ui2) cmdline: the command line is shown as a
+centered float (by default) instead of only at the bottom of the screen. This requires **Neovim 0.12+**
+and follows the same general idea as
+[tiny-cmdline.nvim](https://github.com/rachartier/tiny-cmdline.nvim).
+
+- **Disable entirely:** `require("juu").setup({ cmdline = false })` or `cmdline = { enabled = false }`.
+- **Search (`/` and `?`)** uses the same floating style by default. To get a full-width bar at the bottom for
+  search only (tiny-cmdline’s default), set `native_types = { "/", "?" }` under `cmdline`.
+- **Options** live under `cmdline` in the main setup table: `width`, `position`, `border`, `menu_col_offset`
+  (for completion menu anchoring), and `on_reposition`. See [`lua/juu/config.lua`](./lua/juu/config.lua) defaults.
+
+### Editor messages
+
+With notifications enabled, Juu can subscribe to [`ext_messages`](https://neovim.io/doc/user/api-ui-events.html#ui-messages)
+via `vim.ui_attach` and send many short `msg_show` events to **`juu.notify`** instead of (or in addition to) the
+legacy message area—so things like **“foo.txt” written** appear as a normal notification.
+
+- **Disable:** `require("juu").setup({ messages = false })` or `messages = { enabled = false }`.
+- **Requires** `notify ~= false`. If [noice.nvim](https://github.com/folke/noice.nvim) is loaded, Juu skips this hook so the two plugins do not fight over the message UI.
+- **`:write` in two lines:** Neovim can emit a **quoted path only**, then the full **`…written`** line. Those are different strings, so Juu (a) **merges** them when the second line **extends** the first within **`dedupe_ms`**, using one notification key, (b) **excludes** the `progress` kind by default (often the first line during save), and (c) treats a **quoted-path-only** line as part of the same chain. Adjust with `messages.exclude_kinds` (set `progress = false` in a **map** to show `progress` again).
+- **Exact duplicate text** within **`dedupe_ms`** is still skipped (default **200** ms). Set `messages = { dedupe_ms = false }` to turn deduplication off.
+- **`:Juu history` / `:Notifications`:** History opens in a **read-only split** (yank/copy-friendly; **`q`** closes).
+  It no longer uses `nvim_echo`,
+  so it doesn't interact with the `msg_show` redirect.
+- **Kinds:** Some kinds stay in the normal UI (search count, confirms, long `:set` listings, shell output, …); see
+  [`lua/juu/messages.lua`](./lua/juu/messages.lua) and `exclude_kinds` / `include_kinds` / `filter` in config.
 
 ### Testing Progress Notifications
 

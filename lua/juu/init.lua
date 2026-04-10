@@ -5,6 +5,9 @@ local M = {}
 M.setup = function(opts)
   opts = opts or {}
   require("juu.config").update(opts)
+  if opts.cmdline ~= false then
+    require("juu.cmdline").setup()
+  end
   if opts.notify ~= false then
     local notify = require("juu.notify")
     notify.setup(opts.notify)
@@ -13,6 +16,9 @@ M.setup = function(opts)
     end
     -- Set up commands for notifications
     require("juu.commands").setup()
+    if opts.messages ~= false then
+      require("juu.messages").setup()
+    end
   end
   -- Set up LSP progress tracking
   if opts.progress ~= false then

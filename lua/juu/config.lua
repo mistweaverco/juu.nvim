@@ -75,11 +75,41 @@
 ---@field input table Configuration for vim.ui.input
 ---@field select table Configuration for vim.ui.select
 ---@field notify JuuNotifyConfig|false Configuration for notifications (set to false to disable)
+---@field cmdline JuuCmdlineConfig|false Floating cmdline (Neovim 0.12+); set to false to disable
+---@field messages JuuMessagesConfig|false Redirect |msg_show| to notifications; set to false to disable
+
+---@class JuuCmdlineWidthConfig
+---@field value string|integer Width: "60%" = fraction of editor columns, integer = absolute columns
+---@field min integer Minimum width in columns
+---@field max integer Maximum width in columns
+
+---@class JuuCmdlinePositionConfig
+---@field x string|integer Horizontal position: "50%" = center, integer = absolute columns from left
+---@field y string|integer Vertical position: "50%" = center, integer = absolute rows from top
+
+---@class JuuCmdlineConfig
+---@field enabled boolean|nil Set to false to disable floating cmdline (default: true)
+---@field width JuuCmdlineWidthConfig
+---@field position JuuCmdlinePositionConfig
+---@field border string|nil nil = inherit vim.o.winborder at setup() time
+---@field menu_col_offset integer Completion menu offset from the window's left inner edge
+---@field native_types string[] Types shown full-width at the bottom instead of centered (e.g. "/", "?"). Default {} applies the floating style to all cmdline types including search.
+---@field on_reposition fun()|nil Called after every reposition
+
+---@class JuuMessagesConfig
+---@field enabled boolean|nil When false, do not attach |vim.ui_attach()| for |ui-messages| (default: true)
+---@field exclude_kinds table<string, boolean>|string[]|nil Extra kinds to leave in the default message UI (merged with built-in exclusions). For a map, use `false` to remove a built-in exclusion (e.g. `progress = false`). See |ui-messages| kinds.
+---@field include_kinds string[]|nil If set, only these kinds are redirected to notifications (overrides exclude list).
+---@field filter fun(kind: string, text: string, trigger: string|nil): boolean|nil If set, only redirect when this returns true.
+---@field opts table|nil Extra options passed to |juu.notify.notify| (e.g. title, ttl).
+---@field dedupe_ms number|false|nil Skip a |msg_show| if the trimmed text matches the previous one within this many ms (default: 200). Set to false to disable (e.g. if you need every echo).
 
 ---@class JuuUserConfig
 ---@field input table|nil Configuration for vim.ui.input
 ---@field select table|nil Configuration for vim.ui.select
 ---@field notify JuuNotifyUserConfig|false|nil Configuration for notifications (set to false to disable)
+---@field cmdline JuuCmdlineConfig|false|nil Floating cmdline (Neovim 0.12+); set to false to disable
+---@field messages JuuMessagesConfig|false|nil Redirect |msg_show| to |vim.notify| (requires notifications); set false to disable
 
 local default_config = {
   input = {
@@ -384,6 +414,38 @@ local default_config = {
     -- Conditionally redirect notifications to another backend
     -- Useful for delegating to backends that support features Juu doesn't
     redirect = false,
+  },
+
+  -- Floating cmdline (requires Neovim 0.12+ ui2). Set to false to disable.
+  cmdline = {
+    enabled = true,
+
+    width = {
+      value = "60%",
+      min = 40,
+      max = 80,
+    },
+    position = {
+      x = "50%",
+      y = "50%",
+    },
+    border = nil,
+    menu_col_offset = 3,
+    -- Empty: all cmdline types (including / and ?) use the centered float. Set e.g. { "/", "?" } for full-width bottom search.
+    native_types = {},
+    on_reposition = nil,
+  },
+
+  -- Redirect editor messages (|:write|, |:echo|, etc.) to |vim.notify| via |ui-messages|.
+  -- Requires notifications (notify ~= false). Disabled automatically if noice.nvim is loaded.
+  messages = {
+    enabled = true,
+    exclude_kinds = nil,
+    include_kinds = nil,
+    filter = nil,
+    opts = nil,
+    -- Avoid duplicate notifications when Nvim emits the same text twice in one batch (e.g. :write).
+    dedupe_ms = 200,
   },
 }
 
