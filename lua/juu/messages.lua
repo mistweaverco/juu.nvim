@@ -228,21 +228,6 @@ local function patch_ui2_msg_show(cfg, exclude)
   return true
 end
 
---- |vim._core.ui2| uses `set_cmdheight = false` on its own |vim.ui_attach()|, so Neovim may ignore Juu's
---- `set_cmdheight = true` when both are active. Re-apply |'cmdheight'| after we handle |msg_show|.
----@param cfg table
-local function schedule_cmdheight_zero(cfg)
-  if cfg.set_cmdheight_zero == false then
-    return
-  end
-  vim.schedule(function()
-    if vim.v.exiting ~= 0 then
-      return
-    end
-    vim.o.cmdheight = 0
-  end)
-end
-
 ---@param cfg table
 local function attach(cfg)
   M._ns = vim.api.nvim_create_namespace("juu.messages")
@@ -250,10 +235,7 @@ local function attach(cfg)
 
   patch_ui2_msg_show(cfg, exclude)
 
-  -- Prefer true so standalone TUI hides the legacy row. With ui2, capability merge often keeps cmdheight>0;
-  -- |schedule_cmdheight_zero| runs after each redirected |msg_show| to fix that.
-  local set_ch = cfg.set_cmdheight_zero ~= false
-  vim.ui_attach(M._ns, { ext_messages = true, set_cmdheight = set_ch }, function(event, ...)
+  vim.ui_attach(M._ns, { ext_messages = true }, function(event, ...)
     if event == "msg_show" then
       local kind, content, replace_last, _, _, id, trigger = ...
       kind = kind or ""
@@ -271,12 +253,10 @@ local function attach(cfg)
         local ms = cfg.dedupe_ms
         local action = dedupe_action(text, ms)
         if action == "skip" then
-          schedule_cmdheight_zero(cfg)
           return
         end
         local use_chain = action == "supersede" or (action == "new" and likely_write_prefix(text))
         notify_message(kind, text, replace_last, id, cfg, use_chain)
-        schedule_cmdheight_zero(cfg)
       end
 
       if vim.in_fast_event() then
@@ -326,7 +306,6 @@ function M.setup(user)
   end
 
   M._initialized = true
-  schedule_cmdheight_zero(merged)
 end
 
 function M.detach()

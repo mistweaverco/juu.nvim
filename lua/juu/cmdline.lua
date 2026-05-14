@@ -47,12 +47,6 @@ local original_ui_cmdline_pos = nil ---@type table|nil
 local cmd_win_saved = nil ---@type table|nil
 local ui2 = nil ---@type table|nil
 
-local function set_cmdheight_0()
-  vim._with({ noautocmd = true }, function()
-    vim.o.cmdheight = 0
-  end)
-end
-
 local function get_cmd_win()
   if not ui2 then
     local ok, mod = pcall(require, "vim._core.ui2")
@@ -134,11 +128,6 @@ local function wrap_cmdline_show()
       return r
     end
 
-    -- ui2 sets cmdheight=1 on every show; suppress it for non-native types
-    -- noautocmd prevents ui2's OptionSet handler from re-applying it
-    if not vim.tbl_contains(M.config.native_types, cmdline_type) then
-      set_cmdheight_0()
-    end
     reposition()
     return r
   end
@@ -200,11 +189,6 @@ function M.setup(opts)
       local win = get_cmd_win()
       if win and cmd_win_saved then
         pcall(vim.api.nvim_win_set_config, win, cmd_win_saved)
-      end
-
-      if was_native then
-        -- defer so ui2's OptionSet doesn't re-bump cmdheight to 1 after a search
-        vim.schedule(set_cmdheight_0)
       end
     end,
   })
