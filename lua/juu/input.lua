@@ -466,6 +466,8 @@ local show_input = util.make_queued_async_fn(2, function(opts, on_confirm)
   end
 
   vim.bo[bufnr].filetype = "JuuInput"
+  -- disable auto suggestions from language servers and such..
+  vim.bo[bufnr].buftype = ""
   local default = string.gsub(opts.default or "", "\n", " ")
   vim.api.nvim_buf_set_lines(bufnr, 0, -1, true, { default })
   if vim.fn.has("nvim-0.9") == 0 and #prompt_lines == 1 then
