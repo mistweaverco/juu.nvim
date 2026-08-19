@@ -195,7 +195,7 @@ local function another_ui_handles_messages()
 end
 
 --- When |vim._core.ui2| is enabled, Neovim delivers |msg_show| to every |vim.ui_attach()| client.
---- ui2 draws into its cmd/msg buffers and juu notifies — same text twice. If we would redirect to
+--- ui2 draws into its cmd/msg buffers and juu notifies - same text twice. If we would redirect to
 --- notify, skip ui2's |msg_show| implementation so only juu.notify runs.
 ---@param cfg table
 ---@param exclude table<string, true>

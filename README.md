@@ -469,7 +469,7 @@ and follows the same general idea as
 
 With notifications enabled, Juu can subscribe to [`ext_messages`](https://neovim.io/doc/user/api-ui-events.html#ui-messages)
 via `vim.ui_attach` and send many short `msg_show` events to **`juu.notify`** instead of (or in addition to) the
-legacy message area—so things like **“foo.txt” written** appear as a normal notification.
+legacy message area-so things like **“foo.txt” written** appear as a normal notification.
 
 - **Disable:** `require("juu").setup({ messages = false })` or `messages = { enabled = false }`.
 - **Requires** `notify ~= false`. If [noice.nvim](https://github.com/folke/noice.nvim) is loaded, Juu skips this hook so the two plugins do not fight over the message UI.
