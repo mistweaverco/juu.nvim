@@ -151,6 +151,12 @@ local state = {
   ---
   ---@type number|nil
   namespace_id = nil,
+
+  --- Last geometry applied via nvim_open_win / nvim_win_set_config.
+  --- Used to skip redundant set_config calls that steal focus.
+  ---
+  ---@type { relative: string, width: number, height: number, row: number, col: number, anchor: string }|nil
+  last_geom = nil,
 }
 
 --- Suppress errors that may occur while render windows.
@@ -363,32 +369,77 @@ function M.get_window_position()
   return row, col, (align_bottom and "S" or "N") .. "E", relative
 end
 
+--- Pick a window to restore after a notification render, never the Juu float.
+---@return integer|nil
+local function focus_restore_win()
+  local current = vim.api.nvim_get_current_win()
+  if current ~= state.window_id then
+    return current
+  end
+
+  local prev = vim.fn.win_getid(vim.fn.winnr("#"))
+  if prev ~= 0 and prev ~= state.window_id and vim.api.nvim_win_is_valid(prev) then
+    return prev
+  end
+
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    if win ~= state.window_id and vim.api.nvim_win_is_valid(win) then
+      return win
+    end
+  end
+  return current
+end
+
+--- Run `fn` without firing autocommands, and restore the previously current
+--- window if it changed.
+---
+--- LSP progress re-renders on a timer; `nvim_win_set_config` and window-option
+--- APIs can make the notification float current. oil.nvim's confirmation
+--- cancels on a global WinLeave, so those updates must not enter the float.
+---
+---@param fn fun()
+local function without_stealing_focus(fn)
+  local current_win = focus_restore_win()
+  local saved = vim.o.eventignore
+  vim.o.eventignore = "all"
+  local ok, err = pcall(fn)
+  if current_win and vim.api.nvim_win_is_valid(current_win) and vim.api.nvim_get_current_win() ~= current_win then
+    pcall(vim.api.nvim_set_current_win, current_win)
+  end
+  vim.o.eventignore = saved
+  if not ok then
+    error(err)
+  end
+end
+
+---@param geom { relative: string, width: number, height: number, row: number, col: number, anchor: string }
+---@return boolean
+local function geom_changed(geom)
+  local last = state.last_geom
+  if not last then
+    return true
+  end
+  return last.relative ~= geom.relative
+    or last.width ~= geom.width
+    or last.height ~= geom.height
+    or last.row ~= geom.row
+    or last.col ~= geom.col
+    or last.anchor ~= geom.anchor
+end
+
 --- Set local options on a window.
 ---
---- Workaround for nvim bug where nvim_win_set_option "leaks" local options to
---- windows created afterwards.
----
---- (Thanks @sindrets!)
----
---- See also:
---- * https://github.com/b0o/incline.nvim/issues/4
---- * https://github.com/neovim/neovim/issues/18283
---- * https://github.com/neovim/neovim/issues/14670
+--- Uses |nvim_set_option_value()| with `scope = "local"` so values do not leak
+--- to windows created afterwards (see neovim/neovim#18283), and so we never
+--- need |nvim_win_call()|, which fires WinLeave and steals focus from floats
+--- such as oil.nvim's confirmation window.
 ---
 ---@param window_id number  window to on which options should be set
 ---@param opts      table   local options to set
 function M.win_set_local_options(window_id, opts)
-  vim.api.nvim_win_call(window_id, function()
-    for opt, val in pairs(opts) do
-      local arg
-      if type(val) == "boolean" then
-        arg = (val and "" or "no") .. opt
-      else
-        arg = opt .. "=" .. val
-      end
-      vim.cmd("setlocal " .. arg)
-    end
-  end)
+  for opt, val in pairs(opts) do
+    vim.api.nvim_set_option_value(opt, val, { win = window_id, scope = "local" })
+  end
 end
 
 --- Get the notification buffer ID; create it if it doesn't already exist.
@@ -445,37 +496,52 @@ function M.get_window(row, col, anchor, relative, width, height)
     height = math.min(height, M.options.max_height)
   end
 
-  if state.window_id == nil or not vim.api.nvim_win_is_valid(state.window_id) then
-    -- Create window to display notifications buffer, but don't enter (2nd param)
-    state.window_id = vim.api.nvim_open_win(M.get_buffer(), false, {
-      relative = relative,
-      width = width,
-      height = height,
-      row = row,
-      col = col,
-      anchor = anchor,
-      focusable = false,
-      style = "minimal",
-      border = M.options.border,
-      zindex = M.options.zindex,
-      noautocmd = true,
-    })
-    vim.api.nvim_win_set_hl_ns(state.window_id, M.get_namespace())
-  else
-    -- Window is already created; reposition it in case anything has changed.
-    vim.api.nvim_win_set_config(state.window_id, {
-      relative = relative,
-      width = width,
-      height = height,
-      row = row,
-      col = col,
-      anchor = anchor,
-    })
-  end
+  local geom = {
+    relative = relative,
+    width = width,
+    height = height,
+    row = row,
+    col = col,
+    anchor = anchor,
+  }
 
-  M.win_set_local_options(state.window_id, {
-    winblend = M.options.winblend,
-  })
+  without_stealing_focus(function()
+    if state.window_id == nil or not vim.api.nvim_win_is_valid(state.window_id) then
+      -- Create window to display notifications buffer, but don't enter (2nd param)
+      state.window_id = vim.api.nvim_open_win(M.get_buffer(), false, {
+        relative = relative,
+        width = width,
+        height = height,
+        row = row,
+        col = col,
+        anchor = anchor,
+        focusable = false,
+        style = "minimal",
+        border = M.options.border,
+        zindex = M.options.zindex,
+        noautocmd = true,
+      })
+      vim.api.nvim_win_set_hl_ns(state.window_id, M.get_namespace())
+      M.win_set_local_options(state.window_id, {
+        winblend = M.options.winblend,
+      })
+      state.last_geom = geom
+    elseif geom_changed(geom) then
+      -- Reposition only when geometry actually changed. LSP progress re-renders
+      -- on a timer; nvim_win_set_config on every tick steals focus from floats
+      -- such as oil.nvim's confirmation.
+      vim.api.nvim_win_set_config(state.window_id, {
+        relative = relative,
+        width = width,
+        height = height,
+        row = row,
+        col = col,
+        anchor = anchor,
+        focusable = false,
+      })
+      state.last_geom = geom
+    end
+  end)
   return state.window_id
 end
 
@@ -560,230 +626,235 @@ end
 ---@param item_boundaries table|nil           metadata about item boundaries for border rendering
 function M.set_lines(lines, width, item_boundaries)
   item_boundaries = item_boundaries or {}
-  local buffer_id = M.get_buffer()
-  local namespace_id = M.get_namespace()
-  local view = require("juu.notify.notification.view")
+  without_stealing_focus(function()
+    local buffer_id = M.get_buffer()
+    local namespace_id = M.get_namespace()
+    local view = require("juu.notify.notification.view")
 
-  -- Calculate window dimensions FIRST, before setting extmarks
-  -- This ensures the window has the correct size when virt_lines_above are created
-  local has_borders = #item_boundaries > 0
-  local display_width = width
-  if has_borders then
-    -- Add 1 character width for the right border
-    -- Add 1 more character width for the extra space after the left border
-    display_width = width + 2
-  end
+    -- Calculate window dimensions FIRST, before setting extmarks
+    -- This ensures the window has the correct size when virt_lines_above are created
+    local has_borders = #item_boundaries > 0
+    local display_width = width
+    if has_borders then
+      -- Add 1 character width for the right border
+      -- Add 1 more character width for the extra space after the left border
+      display_width = width + 2
+    end
 
-  -- Calculate window height - we'll insert actual lines for top and bottom borders
-  -- Each item gets: 1 top border line + content lines + 1 bottom border line
-  local buffer_height = #lines
-  local display_height = buffer_height
-  if has_borders then
-    -- Add 1 line for each top border + 1 line for each bottom border
-    display_height = buffer_height + (2 * #item_boundaries)
-  end
+    -- Calculate window height - we'll insert actual lines for top and bottom borders
+    -- Each item gets: 1 top border line + content lines + 1 bottom border line
+    local buffer_height = #lines
+    local display_height = buffer_height
+    if has_borders then
+      -- Add 1 line for each top border + 1 line for each bottom border
+      display_height = buffer_height + (2 * #item_boundaries)
+    end
 
-  -- Set window size BEFORE setting extmarks to ensure virt_lines_above have space
-  M.show(display_height, display_width, item_boundaries)
+    -- Set window size BEFORE setting extmarks to ensure virt_lines_above have space
+    M.show(display_height, display_width, item_boundaries)
 
-  -- Clear previous highlights
-  vim.api.nvim_buf_clear_namespace(buffer_id, namespace_id, 0, -1)
+    -- Clear previous highlights
+    vim.api.nvim_buf_clear_namespace(buffer_id, namespace_id, 0, -1)
 
-  -- Prepare buffer lines, inserting empty lines for top borders
-  -- Instead of using virt_lines_above (which seems unreliable), we'll insert actual lines
-  local buffer_lines = {}
-  local line_mapping = {} -- Maps original line index to new buffer line index
-  local current_buffer_line = 0
+    -- Prepare buffer lines, inserting empty lines for top borders
+    -- Instead of using virt_lines_above (which seems unreliable), we'll insert actual lines
+    local buffer_lines = {}
+    local line_mapping = {} -- Maps original line index to new buffer line index
+    local current_buffer_line = 0
 
-  -- First, determine which lines need right borders and which are first lines (for top borders)
-  local lines_with_right_border = {}
-  local lines_with_top_border = {}
-  for _, boundary in ipairs(item_boundaries) do
-    for line_idx = boundary.first_line, boundary.last_line do
-      if line_idx <= #lines then
-        lines_with_right_border[line_idx] = boundary
-        if line_idx == boundary.first_line then
-          lines_with_top_border[line_idx] = boundary
+    -- First, determine which lines need right borders and which are first lines (for top borders)
+    local lines_with_right_border = {}
+    local lines_with_top_border = {}
+    for _, boundary in ipairs(item_boundaries) do
+      for line_idx = boundary.first_line, boundary.last_line do
+        if line_idx <= #lines then
+          lines_with_right_border[line_idx] = boundary
+          if line_idx == boundary.first_line then
+            lines_with_top_border[line_idx] = boundary
+          end
         end
       end
     end
-  end
 
-  -- Build buffer lines, inserting top border lines before first lines and bottom border lines after last lines
-  for iline = 1, #lines do
-    if lines_with_top_border[iline] then
-      -- Insert empty line for top border before this line
-      table.insert(buffer_lines, "")
-      current_buffer_line = current_buffer_line + 1
-    end
-    table.insert(buffer_lines, "")
-    line_mapping[iline] = current_buffer_line + 1
-    current_buffer_line = current_buffer_line + 1
-
-    -- Check if this is the last line of an item, and insert bottom border line after it
-    for _, boundary in ipairs(item_boundaries) do
-      if iline == boundary.last_line then
+    -- Build buffer lines, inserting top border lines before first lines and bottom border lines after last lines
+    for iline = 1, #lines do
+      if lines_with_top_border[iline] then
+        -- Insert empty line for top border before this line
         table.insert(buffer_lines, "")
         current_buffer_line = current_buffer_line + 1
-        break
       end
-    end
-  end
+      table.insert(buffer_lines, "")
+      line_mapping[iline] = current_buffer_line + 1
+      current_buffer_line = current_buffer_line + 1
 
-  vim.api.nvim_buf_set_lines(buffer_id, 0, -1, false, buffer_lines)
-
-  for iline, line in ipairs(lines) do
-    local buffer_line_idx = line_mapping[iline] - 1 -- Convert to 0-indexed
-
-    -- Check if this line needs a right border
-    local boundary = lines_with_right_border[iline]
-    local top_border_boundary = lines_with_top_border[iline]
-    local line_with_border = line
-    if boundary then
-      local border_styles = view.get_styled_with_border(boundary.config, boundary.style)
-      local border_right_char = border_styles.border_right_char
-      local base_style = border_styles.base_style
-      -- Append right border character to the line
-      line_with_border = vim.deepcopy(line)
-      table.insert(line_with_border, { border_right_char, base_style })
-    end
-
-    -- Render top border on the line BEFORE this one (if it exists)
-    if top_border_boundary then
-      local border_styles = view.get_styled_with_border(top_border_boundary.config, top_border_boundary.style)
-      local border_right_char = border_styles.border_right_char
-      local border_top_char = border_styles.border_top_char
-      local border_top_left_char = border_styles.border_top_left_char
-      local border_top_right_char = border_styles.border_top_right_char
-      local base_style = border_styles.base_style
-      local top_border_virt_text = {}
-      local line_margin = view.options.line_margin
-      -- Add top-left corner
-      table.insert(top_border_virt_text, { border_top_left_char, base_style })
-      -- Add horizontal border characters
-      -- Content now has: margin + extra_space + message + margin + right_border = width + 2
-      -- Border: corner + horizontal + corner + margin + right_border = width + 2
-      -- So: 1 + horizontal + 1 + margin + 1 = width + 2
-      -- Therefore: horizontal = width + 2 - 1 - 1 - margin - 1 = width - margin + 1
-      for _ = 1, width - line_margin + 1 do
-        table.insert(top_border_virt_text, { border_top_char, base_style })
-      end
-      -- Add top-right corner
-      table.insert(top_border_virt_text, { border_top_right_char, base_style })
-      -- Add right margin padding to align with content
-      for _ = 1, line_margin do
-        table.insert(top_border_virt_text, { " ", {} })
-      end
-      -- Add right border character to match content lines
-      table.insert(top_border_virt_text, { border_right_char, base_style })
-      -- Render top border on the line before this content line
-      local top_border_line_idx = buffer_line_idx - 1
-      vim.api.nvim_buf_set_extmark(buffer_id, namespace_id, top_border_line_idx, 0, {
-        virt_text = top_border_virt_text,
-        virt_text_pos = "eol_right_align",
-      })
-    end
-
-    -- Render content line
-    -- Add one extra space at the start (after the line_margin spaces from Line() function)
-    local content_with_extra_space = vim.deepcopy(line_with_border)
-    table.insert(content_with_extra_space, 1, { " ", {} })
-
-    vim.api.nvim_buf_set_extmark(buffer_id, namespace_id, buffer_line_idx, 0, {
-      virt_text = content_with_extra_space,
-      virt_text_pos = "eol_right_align",
-    })
-  end
-
-  -- Add virt_lines for borders around each notification item
-  for _, boundary in ipairs(item_boundaries) do
-    local border_styles = view.get_styled_with_border(boundary.config, boundary.style)
-    local border_left_char = border_styles.border_left_char
-    local border_right_char = border_styles.border_right_char
-    local border_bottom_char = border_styles.border_bottom_char
-    local border_bottom_left_char = border_styles.border_bottom_left_char
-    local border_bottom_right_char = border_styles.border_bottom_right_char
-    local base_style = border_styles.base_style
-    local line_margin = view.options.line_margin
-
-    -- Create bottom border
-    if boundary.last_line <= #lines then
-      local bottom_border_line = {}
-      -- Add left margin padding to align with content (same as content lines)
-      -- Add bottom-left corner
-      table.insert(bottom_border_line, { border_bottom_left_char, base_style })
-      -- Add horizontal border characters
-      -- Content now has: margin + extra_space + message + margin + right_border = width + 2
-      -- Border: corner + horizontal + corner + margin + right_border = width + 2
-      -- So: 1 + horizontal + 1 + margin + 1 = width + 2
-      -- Therefore: horizontal = width + 2 - 1 - 1 - margin - 1 = width - margin + 1
-      for _ = 1, width - line_margin + 1 do
-        table.insert(bottom_border_line, { border_bottom_char, base_style })
-      end
-      -- Add bottom-right corner
-      table.insert(bottom_border_line, { border_bottom_right_char, base_style })
-      -- Add right margin padding to align with content
-      for _ = 1, line_margin do
-        table.insert(bottom_border_line, { " ", {} })
-      end
-      -- Add right border character to match content lines
-      table.insert(bottom_border_line, { border_right_char, base_style })
-      -- Render bottom border on the line after the last content line
-      local last_buffer_line_idx = line_mapping[boundary.last_line] - 1 -- Convert to 0-indexed
-      local bottom_border_line_idx = last_buffer_line_idx + 1
-      -- Bottom border line should already exist (inserted in buffer_lines above)
-      vim.api.nvim_buf_set_extmark(buffer_id, namespace_id, bottom_border_line_idx, 0, {
-        virt_text = bottom_border_line,
-        virt_text_pos = "eol_right_align",
-      })
-    end
-
-    -- Create left border for each line of the item
-    -- Right border is added to the line content during the initial rendering loop above
-    for line_idx = boundary.first_line, boundary.last_line do
-      if line_idx <= #lines then
-        local buffer_line_idx = line_mapping[line_idx] - 1 -- Convert to 0-indexed
-        -- Build left border virt_text with margin spaces to align with content
-        local left_border = {}
-        for _ = 1, line_margin do
-          table.insert(left_border, { " ", {} })
+      -- Check if this is the last line of an item, and insert bottom border line after it
+      for _, boundary in ipairs(item_boundaries) do
+        if iline == boundary.last_line then
+          table.insert(buffer_lines, "")
+          current_buffer_line = current_buffer_line + 1
+          break
         end
-        table.insert(left_border, { border_left_char, base_style })
-        -- Add one extra space after the border character
-        table.insert(left_border, { " ", {} })
+      end
+    end
 
-        -- Add left border virt_text at column 0 (margin spaces are included in virt_text)
-        vim.api.nvim_buf_set_extmark(buffer_id, namespace_id, buffer_line_idx, 0, {
-          virt_text = left_border,
-          virt_text_pos = "overlay",
+    vim.api.nvim_buf_set_lines(buffer_id, 0, -1, false, buffer_lines)
+
+    for iline, line in ipairs(lines) do
+      local buffer_line_idx = line_mapping[iline] - 1 -- Convert to 0-indexed
+
+      -- Check if this line needs a right border
+      local boundary = lines_with_right_border[iline]
+      local top_border_boundary = lines_with_top_border[iline]
+      local line_with_border = line
+      if boundary then
+        local border_styles = view.get_styled_with_border(boundary.config, boundary.style)
+        local border_right_char = border_styles.border_right_char
+        local base_style = border_styles.base_style
+        -- Append right border character to the line
+        line_with_border = vim.deepcopy(line)
+        table.insert(line_with_border, { border_right_char, base_style })
+      end
+
+      -- Render top border on the line BEFORE this one (if it exists)
+      if top_border_boundary then
+        local border_styles = view.get_styled_with_border(top_border_boundary.config, top_border_boundary.style)
+        local border_right_char = border_styles.border_right_char
+        local border_top_char = border_styles.border_top_char
+        local border_top_left_char = border_styles.border_top_left_char
+        local border_top_right_char = border_styles.border_top_right_char
+        local base_style = border_styles.base_style
+        local top_border_virt_text = {}
+        local line_margin = view.options.line_margin
+        -- Add top-left corner
+        table.insert(top_border_virt_text, { border_top_left_char, base_style })
+        -- Add horizontal border characters
+        -- Content now has: margin + extra_space + message + margin + right_border = width + 2
+        -- Border: corner + horizontal + corner + margin + right_border = width + 2
+        -- So: 1 + horizontal + 1 + margin + 1 = width + 2
+        -- Therefore: horizontal = width + 2 - 1 - 1 - margin - 1 = width - margin + 1
+        for _ = 1, width - line_margin + 1 do
+          table.insert(top_border_virt_text, { border_top_char, base_style })
+        end
+        -- Add top-right corner
+        table.insert(top_border_virt_text, { border_top_right_char, base_style })
+        -- Add right margin padding to align with content
+        for _ = 1, line_margin do
+          table.insert(top_border_virt_text, { " ", {} })
+        end
+        -- Add right border character to match content lines
+        table.insert(top_border_virt_text, { border_right_char, base_style })
+        -- Render top border on the line before this content line
+        local top_border_line_idx = buffer_line_idx - 1
+        vim.api.nvim_buf_set_extmark(buffer_id, namespace_id, top_border_line_idx, 0, {
+          virt_text = top_border_virt_text,
+          virt_text_pos = "eol_right_align",
         })
       end
+
+      -- Render content line
+      -- Add one extra space at the start (after the line_margin spaces from Line() function)
+      local content_with_extra_space = vim.deepcopy(line_with_border)
+      table.insert(content_with_extra_space, 1, { " ", {} })
+
+      vim.api.nvim_buf_set_extmark(buffer_id, namespace_id, buffer_line_idx, 0, {
+        virt_text = content_with_extra_space,
+        virt_text_pos = "eol_right_align",
+      })
     end
-  end
+
+    -- Add virt_lines for borders around each notification item
+    for _, boundary in ipairs(item_boundaries) do
+      local border_styles = view.get_styled_with_border(boundary.config, boundary.style)
+      local border_left_char = border_styles.border_left_char
+      local border_right_char = border_styles.border_right_char
+      local border_bottom_char = border_styles.border_bottom_char
+      local border_bottom_left_char = border_styles.border_bottom_left_char
+      local border_bottom_right_char = border_styles.border_bottom_right_char
+      local base_style = border_styles.base_style
+      local line_margin = view.options.line_margin
+
+      -- Create bottom border
+      if boundary.last_line <= #lines then
+        local bottom_border_line = {}
+        -- Add left margin padding to align with content (same as content lines)
+        -- Add bottom-left corner
+        table.insert(bottom_border_line, { border_bottom_left_char, base_style })
+        -- Add horizontal border characters
+        -- Content now has: margin + extra_space + message + margin + right_border = width + 2
+        -- Border: corner + horizontal + corner + margin + right_border = width + 2
+        -- So: 1 + horizontal + 1 + margin + 1 = width + 2
+        -- Therefore: horizontal = width + 2 - 1 - 1 - margin - 1 = width - margin + 1
+        for _ = 1, width - line_margin + 1 do
+          table.insert(bottom_border_line, { border_bottom_char, base_style })
+        end
+        -- Add bottom-right corner
+        table.insert(bottom_border_line, { border_bottom_right_char, base_style })
+        -- Add right margin padding to align with content
+        for _ = 1, line_margin do
+          table.insert(bottom_border_line, { " ", {} })
+        end
+        -- Add right border character to match content lines
+        table.insert(bottom_border_line, { border_right_char, base_style })
+        -- Render bottom border on the line after the last content line
+        local last_buffer_line_idx = line_mapping[boundary.last_line] - 1 -- Convert to 0-indexed
+        local bottom_border_line_idx = last_buffer_line_idx + 1
+        -- Bottom border line should already exist (inserted in buffer_lines above)
+        vim.api.nvim_buf_set_extmark(buffer_id, namespace_id, bottom_border_line_idx, 0, {
+          virt_text = bottom_border_line,
+          virt_text_pos = "eol_right_align",
+        })
+      end
+
+      -- Create left border for each line of the item
+      -- Right border is added to the line content during the initial rendering loop above
+      for line_idx = boundary.first_line, boundary.last_line do
+        if line_idx <= #lines then
+          local buffer_line_idx = line_mapping[line_idx] - 1 -- Convert to 0-indexed
+          -- Build left border virt_text with margin spaces to align with content
+          local left_border = {}
+          for _ = 1, line_margin do
+            table.insert(left_border, { " ", {} })
+          end
+          table.insert(left_border, { border_left_char, base_style })
+          -- Add one extra space after the border character
+          table.insert(left_border, { " ", {} })
+
+          -- Add left border virt_text at column 0 (margin spaces are included in virt_text)
+          vim.api.nvim_buf_set_extmark(buffer_id, namespace_id, buffer_line_idx, 0, {
+            virt_text = left_border,
+            virt_text_pos = "overlay",
+          })
+        end
+      end
+    end
+  end)
 end
 
 --- Close the Juu window and associated buffers.
 function M.close()
-  if state.namespace_id ~= nil then
-    if state.buffer_id ~= nil and vim.api.nvim_buf_is_valid(state.buffer_id) then
-      vim.api.nvim_buf_clear_namespace(state.buffer_id, state.namespace_id, 0, -1)
+  without_stealing_focus(function()
+    if state.namespace_id ~= nil then
+      if state.buffer_id ~= nil and vim.api.nvim_buf_is_valid(state.buffer_id) then
+        vim.api.nvim_buf_clear_namespace(state.buffer_id, state.namespace_id, 0, -1)
+      end
+      state.namespace_id = nil
     end
-    state.namespace_id = nil
-  end
 
-  if state.window_id ~= nil then
-    if vim.api.nvim_win_is_valid(state.window_id) then
-      vim.api.nvim_win_close(state.window_id, true)
+    if state.window_id ~= nil then
+      if vim.api.nvim_win_is_valid(state.window_id) then
+        vim.api.nvim_win_close(state.window_id, true)
+      end
+      state.window_id = nil
     end
-    state.window_id = nil
-  end
+    state.last_geom = nil
 
-  if state.buffer_id ~= nil then
-    if vim.api.nvim_buf_is_valid(state.buffer_id) then
-      vim.api.nvim_buf_delete(state.buffer_id, { force = true })
+    if state.buffer_id ~= nil then
+      if vim.api.nvim_buf_is_valid(state.buffer_id) then
+        vim.api.nvim_buf_delete(state.buffer_id, { force = true })
+      end
+      state.buffer_id = nil
     end
-    state.buffer_id = nil
-  end
+  end)
 end
 
 return M

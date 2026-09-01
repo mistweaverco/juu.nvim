@@ -54,8 +54,8 @@ M.options = {
   ---   "hyphenate" is ref- INFO
   ---       lowed like this
   ---
-  ---   "ellipsis" is refl… INFO
-  ---       …owed like this
+  ---   "ellipsis" is refl... INFO
+  ---       ...owed like this
   ---<
   ---
   --- If this option is set to false, long lines will simply be truncated.
@@ -394,8 +394,8 @@ function M.render_item(item, config, count)
   if M.options.reflow == "hyphenate" then
     presplit_char = "-"
   elseif M.options.reflow == "ellipsis" then
-    presplit_char = "…"
-    postsplit_char = "…"
+    presplit_char = "..."
+    postsplit_char = "..."
   end
 
   if ann_tok and msg_width ~= math.huge and M.options.reflow then

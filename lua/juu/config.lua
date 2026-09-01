@@ -147,7 +147,7 @@ local default_config = {
       wrap = false,
       -- Indicator for when text exceeds window
       list = true,
-      listchars = "precedes:…,extends:…",
+      listchars = "precedes:...,extends:...",
       -- Increase this for more context when text scrolls off the window
       sidescrolloff = 0,
     },

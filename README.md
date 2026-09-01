@@ -223,7 +223,7 @@ require("juu").setup({
       wrap = false,
       -- Indicator for when text exceeds window
       list = true,
-      listchars = "precedes:…,extends:…",
+      listchars = "precedes:...,extends:...",
       -- Increase this for more context when text scrolls off the window
       sidescrolloff = 0,
     },
@@ -469,16 +469,16 @@ and follows the same general idea as
 
 With notifications enabled, Juu can subscribe to [`ext_messages`](https://neovim.io/doc/user/api-ui-events.html#ui-messages)
 via `vim.ui_attach` and send many short `msg_show` events to **`juu.notify`** instead of (or in addition to) the
-legacy message area—so things like **“foo.txt” written** appear as a normal notification.
+legacy message area-so things like **“foo.txt” written** appear as a normal notification.
 
 - **Disable:** `require("juu").setup({ messages = false })` or `messages = { enabled = false }`.
 - **Requires** `notify ~= false`. If [noice.nvim](https://github.com/folke/noice.nvim) is loaded, Juu skips this hook so the two plugins do not fight over the message UI.
-- **`:write` in two lines:** Neovim can emit a **quoted path only**, then the full **`…written`** line. Those are different strings, so Juu (a) **merges** them when the second line **extends** the first within **`dedupe_ms`**, using one notification key, (b) **excludes** the `progress` kind by default (often the first line during save), and (c) treats a **quoted-path-only** line as part of the same chain. Adjust with `messages.exclude_kinds` (set `progress = false` in a **map** to show `progress` again).
+- **`:write` in two lines:** Neovim can emit a **quoted path only**, then the full **`...written`** line. Those are different strings, so Juu (a) **merges** them when the second line **extends** the first within **`dedupe_ms`**, using one notification key, (b) **excludes** the `progress` kind by default (often the first line during save), and (c) treats a **quoted-path-only** line as part of the same chain. Adjust with `messages.exclude_kinds` (set `progress = false` in a **map** to show `progress` again).
 - **Exact duplicate text** within **`dedupe_ms`** is still skipped (default **200** ms). Set `messages = { dedupe_ms = false }` to turn deduplication off.
 - **`:Juu history` / `:Notifications`:** History opens in a **read-only split** (yank/copy-friendly; **`q`** closes).
   It no longer uses `nvim_echo`,
   so it doesn't interact with the `msg_show` redirect.
-- **Kinds:** Some kinds stay in the normal UI (search count, confirms, long `:set` listings, shell output, …); see
+- **Kinds:** Some kinds stay in the normal UI (search count, confirms, long `:set` listings, shell output, ...); see
   [`lua/juu/messages.lua`](./lua/juu/messages.lua) and `exclude_kinds` / `include_kinds` / `filter` in config.
 
 ### Testing Progress Notifications
