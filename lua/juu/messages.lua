@@ -28,7 +28,9 @@ local default_exclude = {
   shell_cmd = true,
   shell_out = true,
   shell_ret = true,
-  -- nvim_echo progress during :write often duplicates the final bufwrite line.
+  -- Plugin and editor progress (completion scan, indent, nvim_echo). :write is
+  -- also kind "progress", but its id is "bufwrite" or "nvim.bufwrite ...", and
+  -- those are redirected below instead of dropped with the rest.
   progress = true,
 }
 
@@ -134,6 +136,116 @@ local function likely_write_prefix(text)
   return t:match('^"[^"]+"%s*$') ~= nil
 end
 
+--- Neovim 0.11 used kind "bufwrite". 0.12 emits kind "progress" with id "bufwrite"
+--- or "nvim.bufwrite \"file\"".
+---@param kind string
+---@param id any
+---@return boolean
+local function is_write_message(kind, id)
+  if kind == "bufwrite" then
+    return true
+  end
+  if kind ~= "progress" or type(id) ~= "string" then
+    return false
+  end
+  return id == "bufwrite" or vim.startswith(id, "nvim.bufwrite")
+end
+
+---@param cfg table
+---@return number
+local function default_message_ttl(cfg)
+  if cfg.opts and cfg.opts.ttl ~= nil then
+    return cfg.opts.ttl
+  end
+  local ok, notification = pcall(require, "juu.notify")
+  if ok and type(notification.options) == "table" and type(notification.options.configs) == "table" then
+    local configs = notification.options.configs
+    local group = configs.messages or configs.default
+    if type(group) == "table" and type(group.ttl) == "number" then
+      return group.ttl
+    end
+  end
+  return 5
+end
+
+---@param level integer
+---@return string
+local function annote_for_level(level)
+  local group = nil
+  local ok, notification = pcall(require, "juu.notify")
+  if ok and type(notification.options) == "table" and type(notification.options.configs) == "table" then
+    group = notification.options.configs.default
+  end
+  group = type(group) == "table" and group or {}
+  if level == vim.log.levels.ERROR then
+    return group.error_annote or "ERROR"
+  elseif level == vim.log.levels.WARN then
+    return group.warn_annote or "WARN"
+  elseif level == vim.log.levels.DEBUG then
+    return group.debug_annote or "DEBUG"
+  end
+  return group.info_annote or "INFO"
+end
+
+---@param name string
+---@return string
+local function theme_hl_group(name)
+  local safe = name:gsub("[^%w_]", "")
+  if safe == "" then
+    safe = "Kind"
+  end
+  return "JuuMsgTheme" .. safe:sub(1, 1):upper() .. safe:sub(2)
+end
+
+---@param kind string
+---@param id any
+---@param use_write_chain boolean|nil
+---@return string|nil
+local function theme_name_for(kind, id, use_write_chain)
+  if use_write_chain or is_write_message(kind, id) then
+    return "write"
+  end
+  if kind ~= "" then
+    return kind
+  end
+  return nil
+end
+
+--- Apply messages.theme icon and hex color. Icon replaces the level label.
+--- A hex color becomes the notify level (highlight group). Nil keeps the
+--- current level label and info/warn/error highlights. false clears a default icon.
+---@param kind string
+---@param id any
+---@param use_write_chain boolean|nil
+---@param cfg table
+---@param level integer
+---@param opts table
+---@return integer|string
+local function apply_theme(kind, id, use_write_chain, cfg, level, opts)
+  local name = theme_name_for(kind, id, use_write_chain)
+  local theme = name and type(cfg.theme) == "table" and cfg.theme[name] or nil
+  if type(theme) ~= "table" then
+    return level
+  end
+
+  local notify_level = level ---@type integer|string
+  local use_color = type(theme.color) == "string" and theme.color:match("^#%x%x%x%x%x%x$") ~= nil
+  if use_color then
+    local hl = theme_hl_group(name)
+    vim.api.nvim_set_hl(0, hl, { fg = theme.color })
+    notify_level = hl
+  end
+
+  if type(theme.icon) == "string" and theme.icon ~= "" then
+    opts.annote = theme.icon
+    opts.data = { leading_icon = true }
+  elseif use_color then
+    -- A string level does not produce INFO/WARN/ERROR on its own.
+    opts.annote = annote_for_level(level)
+  end
+  return notify_level
+end
+
 ---@param kind string
 ---@param text string
 ---@param replace_last boolean
@@ -145,14 +257,18 @@ local function notify_message(kind, text, replace_last, id, cfg, use_write_chain
   local opts = {
     group = "messages",
   }
-  if use_write_chain then
-    opts.key = "juu.msg:write_chain"
+  if use_write_chain or is_write_message(kind, id) then
+    opts.key = "juu.msg:kind:bufwrite"
+  elseif kind ~= "" then
+    opts.key = "juu.msg:kind:" .. kind
   elseif id ~= nil then
     opts.key = "juu.msg:id:" .. tostring(id)
   elseif replace_last then
     opts.key = "juu.msg:last"
-  elseif kind == "bufwrite" then
-    opts.key = "juu.msg:kind:bufwrite"
+  end
+  level = apply_theme(kind, id, use_write_chain, cfg, level, opts)
+  if not (cfg.opts and cfg.opts.ttl ~= nil) then
+    opts.ttl = default_message_ttl(cfg)
   end
   if cfg.opts then
     opts = vim.tbl_extend("force", opts, cfg.opts)
@@ -165,12 +281,14 @@ end
 ---@param text string
 ---@param trigger string|nil
 ---@param exclude table<string, true>
+---@param id any
 ---@return boolean redirect true if we should show as notify and consume the event
-local function should_redirect(cfg, kind, text, trigger, exclude)
+local function should_redirect(cfg, kind, text, trigger, exclude, id)
+  local write = is_write_message(kind, id)
   if type(cfg.include_kinds) == "table" and #cfg.include_kinds > 0 then
     local allowed = false
     for _, k in ipairs(cfg.include_kinds) do
-      if k == kind then
+      if k == kind or (write and (k == "bufwrite" or k == "write" or k == "progress")) then
         allowed = true
         break
       end
@@ -178,7 +296,7 @@ local function should_redirect(cfg, kind, text, trigger, exclude)
     if not allowed then
       return false
     end
-  elseif exclude[kind] then
+  elseif not write and exclude[kind] then
     return false
   end
   if cfg.filter and not cfg.filter(kind, text, trigger) then
@@ -220,7 +338,7 @@ local function patch_ui2_msg_show(cfg, exclude)
     end
     kind = kind or ""
     local text = content_to_string(content)
-    if not should_redirect(cfg, kind, text, trigger, exclude) then
+    if not should_redirect(cfg, kind, text, trigger, exclude, id) then
       return orig(kind, content, replace_last, hist, append, id, trigger)
     end
     return
@@ -245,7 +363,7 @@ local function attach(cfg)
         return false
       end
 
-      if not should_redirect(cfg, kind, text, trigger, exclude) then
+      if not should_redirect(cfg, kind, text, trigger, exclude, id) then
         return false
       end
 

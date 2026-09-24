@@ -96,6 +96,10 @@
 ---@field native_types string[] Types shown full-width at the bottom instead of centered (e.g. "/", "?"). Default {} applies the floating style to all cmdline types including search.
 ---@field on_reposition fun()|nil Called after every reposition
 
+---@class JuuMessageTheme
+---@field icon string|false|nil Replaces the INFO/WARN/ERROR label. `false` keeps that label (a Lua nil field is dropped when configs merge, so it cannot clear a default icon).
+---@field color string|nil Hex foreground (`#rrggbb`) used instead of the info/warn/error highlight. nil keeps the level color.
+
 ---@class JuuMessagesConfig
 ---@field enabled boolean|nil When false, do not attach |vim.ui_attach()| for |ui-messages| (default: true)
 ---@field exclude_kinds table<string, boolean>|string[]|nil Extra kinds to leave in the default message UI (merged with built-in exclusions). For a map, use `false` to remove a built-in exclusion (e.g. `progress = false`). See |ui-messages| kinds.
@@ -103,6 +107,7 @@
 ---@field filter fun(kind: string, text: string, trigger: string|nil): boolean|nil If set, only redirect when this returns true.
 ---@field opts table|nil Extra options passed to |juu.notify.notify| (e.g. title, ttl).
 ---@field dedupe_ms number|false|nil Skip a |msg_show| if the trimmed text matches the previous one within this many ms (default: 200). Set to false to disable (e.g. if you need every echo).
+---@field theme table<string, JuuMessageTheme>|nil Per-kind icon and color. `:write` uses `write` (Neovim reports it as progress). Other messages use their kind (`undo`, `echo`, ...).
 
 ---@class JuuUserConfig
 ---@field input table|nil Configuration for vim.ui.input
@@ -446,6 +451,12 @@ local default_config = {
     opts = nil,
     -- Avoid duplicate notifications when Nvim emits the same text twice in one batch (e.g. :write).
     dedupe_ms = 200,
+    -- Icon replaces the INFO/WARN/ERROR label. color nil keeps the level highlight.
+    -- Set icon = false to keep the level label.
+    theme = {
+      write = { icon = "", color = nil },
+      undo = { icon = "", color = nil },
+    },
   },
 }
 

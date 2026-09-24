@@ -384,6 +384,10 @@ function M.render_item(item, config, count)
   annote_hl = annote_hl or item.style
   local ann_tok = item.annote and Token(item.annote, annote_hl)
   local sep_tok = Token(config.annote_separator or " ")
+  local leading_icon = type(item.data) == "table" and item.data.leading_icon == true and ann_tok ~= nil
+  -- Same highlight as the icon so the padding shares its background.
+  local icon_pad = leading_icon and Token(" ", annote_hl) or nil
+  local prefix_spacer = nil ---@type NotificationToken|nil
 
   -- How much space is available to message lines
   local msg_width = window.max_width()
@@ -398,15 +402,31 @@ function M.render_item(item, config, count)
     postsplit_char = "..."
   end
 
+  local function annote_span()
+    if not ann_tok then
+      return 0
+    end
+    if leading_icon then
+      return strwidth(" ", ann_tok[1], " ")
+    end
+    return strwidth(sep_tok[1], ann_tok[1])
+  end
+
   if ann_tok and msg_width ~= math.huge and M.options.reflow then
     -- If we need annote, adjust remaining available width for message line(s)
-    local ann_width = strwidth(sep_tok[1], ann_tok[1])
+    local ann_width = annote_span()
     if ann_width > msg_width then
       -- No room for annote + item line. Put annote on line of its own.
-      table.insert(lines, Line(ann_tok))
-      item_width = line_width(ann_tok[1])
+      if leading_icon then
+        table.insert(lines, Line(icon_pad, ann_tok, icon_pad))
+        item_width = line_width(" ", ann_tok[1], " ")
+      else
+        table.insert(lines, Line(ann_tok))
+        item_width = line_width(ann_tok[1])
+      end
       -- Pretend there was no annote to begin with.
       ann_tok = nil
+      leading_icon = false
     else
       -- Reduce available space for message line(s); that will get printed next
       -- to annote and sep in first iteration of loop below.
@@ -418,7 +438,24 @@ function M.render_item(item, config, count)
   local msg_style = (config.color_messages and item.style) or nil
 
   local function insert(line)
-    if ann_tok then
+    if leading_icon and ann_tok then
+      table.insert(lines, Line(icon_pad, ann_tok, icon_pad, line))
+      item_width = math.max(item_width, line_width(" ", ann_tok[1], " ", line[1]))
+
+      if M.options.align == "annote" then
+        msg_width = msg_width + annote_span()
+        ann_tok = nil
+        leading_icon = false
+      else
+        -- Keep later lines aligned with the message, not under the icon.
+        prefix_spacer = Token(string.rep(" ", annote_span()))
+        ann_tok = nil
+        leading_icon = false
+      end
+    elseif prefix_spacer then
+      table.insert(lines, Line(prefix_spacer, line))
+      item_width = math.max(item_width, line_width(prefix_spacer[1], line[1]))
+    elseif ann_tok then
       -- Need to emite annote token in this line
       table.insert(lines, Line(line, sep_tok, ann_tok))
       item_width = math.max(item_width, line_width(line[1], sep_tok[1], ann_tok[1]))
@@ -493,7 +530,9 @@ function M.render_item(item, config, count)
   end
 
   if #lines == 0 then
-    if ann_tok then
+    if ann_tok and leading_icon then
+      return { Line(icon_pad, ann_tok, icon_pad) }, line_width(" ", item.annote, " ")
+    elseif ann_tok then
       -- The message is an empty string, but there's an annotation to render.
       return { Line(ann_tok) }, line_width(item.annote)
     else

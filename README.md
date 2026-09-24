@@ -70,7 +70,7 @@ and can route [`msg_show`](https://neovim.io/doc/user/api-ui-events.html#ui-mess
 
 ## Requirements
 
-- Neovim 0.11.5+ (might work on earlier versions, but not tested)
+- Neovim 0.12.0+ (might work on earlier versions, but not tested)
 
 ## Installation
 
@@ -185,6 +185,10 @@ require("juu").setup({
   messages = {
     -- enabled = true,
     -- dedupe_ms = 200, -- skip duplicate msg_show with the same text within this window
+    -- theme = {
+    --   write = { icon = "", color = nil }, -- nil color keeps the info/warn/error highlight
+    --   undo = { icon = "", color = nil }, -- icon = false keeps the INFO/WARN/ERROR label
+    -- },
   },
 
   -- Input styling configuration
@@ -473,7 +477,9 @@ legacy message area-so things like **“foo.txt” written** appear as a normal 
 
 - **Disable:** `require("juu").setup({ messages = false })` or `messages = { enabled = false }`.
 - **Requires** `notify ~= false`. If [noice.nvim](https://github.com/folke/noice.nvim) is loaded, Juu skips this hook so the two plugins do not fight over the message UI.
-- **`:write` in two lines:** Neovim can emit a **quoted path only**, then the full **`...written`** line. Those are different strings, so Juu (a) **merges** them when the second line **extends** the first within **`dedupe_ms`**, using one notification key, (b) **excludes** the `progress` kind by default (often the first line during save), and (c) treats a **quoted-path-only** line as part of the same chain. Adjust with `messages.exclude_kinds` (set `progress = false` in a **map** to show `progress` again).
+- **`:write`:** Neovim 0.12 emits the written line as kind `progress` with id `bufwrite` or `nvim.bufwrite "file"`. Juu shows those and still excludes other `progress` (completion scan, indent, plugin progress). A quoted path followed by the full `...written` line within **`dedupe_ms`** updates the same notification. Set `messages.exclude_kinds` to a **map** with `progress = false` to show the rest of `progress` again.
+- **Same kind, one window:** Each redirected kind reuses one notification (`undo` updates the undo window, another `:write` updates the write window) and the timer restarts from that update.
+- **Theme:** `messages.theme.<kind>` sets `icon` and `color`. `:write` uses `theme.write` (default icon ``); undo uses `theme.undo` (default icon ``). `color` is a `#rrggbb` foreground used in place of the info/warn/error highlight. `nil` keeps the current label or level color. Set `icon = false` to keep the `INFO` / `WARN` / `ERROR` label, because a Lua `nil` field is dropped when configs merge.
 - **Exact duplicate text** within **`dedupe_ms`** is still skipped (default **200** ms). Set `messages = { dedupe_ms = false }` to turn deduplication off.
 - **`:Juu history` / `:Notifications`:** History opens in a **read-only split** (yank/copy-friendly; **`q`** closes).
   It no longer uses `nvim_echo`,
