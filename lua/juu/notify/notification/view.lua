@@ -439,8 +439,11 @@ function M.render_item(item, config, count)
 
   local function insert(line)
     if leading_icon and ann_tok then
-      table.insert(lines, Line(icon_pad, ann_tok, icon_pad, line))
-      item_width = math.max(item_width, line_width(" ", ann_tok[1], " ", line[1]))
+      -- TODO:
+      -- Move this to where it belongs and not here‥.
+      local icon_and_message_separator = { " ", { "JuuBlend", "JuuNotifyAnnote" .. msg_style } }
+      table.insert(lines, Line(icon_pad, ann_tok, icon_pad, icon_and_message_separator, line))
+      item_width = math.max(item_width, line_width(" ", ann_tok[1], "  ", line[1]))
 
       if M.options.align == "annote" then
         msg_width = msg_width + annote_span()
